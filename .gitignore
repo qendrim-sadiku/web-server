@@ -1,0 +1,90 @@
+# Node.js
+node_modules
+npm-debug.log
+yarn-error.log
+
+# Logs
+logs
+*.log
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Environment variables
+.env
+
+# Dependencies
+node_modules/
+jspm_packages/
+
+# Optional npm cache directory
+.npm
+
+# Optional eslint cache
+.eslintcache
+
+# Optional REPL history
+.node_repl_history
+
+# Output of 'npm pack'
+*.tgz
+
+# Compiled binary addons
+build/Release
+
+# Dependency directories
+node_modules/
+jspm_packages/
+
+# Typescript v1 declaration files
+typings/
+
+# Optional stylelint cache
+.stylelintcache
+
+# Ignores DS_Store files
+*.DS_Store
+
+# Visual Studio Code
+.vscode/
+*.code-workspace
+
+# MacOS
+.DS_Store
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Editor directories and files
+.idea/
+.vscode/
+*.sublime-project
+*.sublime-workspace
+
+# Sequelize migration files
+migrations/
+seeders/
+
+# pm2
+pids/
+logs/
+*.pid
+*.seed
+
+# Ignore coverage reports
+coverage/
+
+# Ignore .next (Next.js)
+.next/
+
+# Ignore public and dist folders
+public/
+dist/
+
+# Ignore build directories
+build/
