@@ -3,15 +3,34 @@ const bodyParser = require('body-parser');
 const authRoutes = require('./routes/authRoutes');
 const userRoutes = require('./routes/userRoutes');
 const sequelize = require('./config/sequelize');
+const cors = require('cors');
+const locationRoutes = require('./routes/locationRoutes')
+const fs = require('fs');
+const path = require('path');
+
+
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Ensure the uploads directory exists
+const uploadDir = path.join(__dirname, 'uploads');
+if (!fs.existsSync(uploadDir)) {
+  fs.mkdirSync(uploadDir);
+}
+
 app.use(bodyParser.json());
+app.use(bodyParser.urlencoded({ extended: true }));
+app.use(cors());
+// sequelize.sync({ force: true }); // This will drop existing tables and recreate them
 
 // Routes
 app.use('/auth', authRoutes);
 app.use('/api/', userRoutes); // Mount user routes
+app.use('/countries', locationRoutes); // Mount user routes
+
+// Serve static files from the uploads directory
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 
 // Database synchronization
