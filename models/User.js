@@ -1,13 +1,41 @@
-// models/User.js
 const { DataTypes } = require('sequelize');
 const sequelize = require('../config/sequelize');
-const bcrypt = require('bcrypt');
+const bcrypt = require('bcrypt'); // Assuming bcrypt for password hashing
 
-const ContactDetails = require('./UserProfile/ContactDetails');
+const UserContactDetails = require('./UserProfile/UserContactDetails');
 const Address = require('./UserProfile/Address');
 const MeetingPoint = require('./UserProfile/MeetingPoint');
+const UserDetails = require('./UserProfile/UserDetails');
+const PaymentInfo = require('./UserProfile/PaymentInfo');
 
 const User = sequelize.define('User', {
+  id: {
+    type: DataTypes.INTEGER,
+    autoIncrement: true,
+    primaryKey: true
+  },
+  name: {
+    type: DataTypes.STRING,
+    allowNull: false,
+    validate: {
+      notEmpty: {
+        msg: 'Name is required'
+      }
+    }
+  },
+  surname: {
+    type: DataTypes.STRING,
+    allowNull: false,
+    validate: {
+      notEmpty: {
+        msg: 'Surname is required'
+      }
+    }
+  },
+  avatar: {
+    type: DataTypes.STRING,
+    allowNull: true,
+  },
   username: {
     type: DataTypes.STRING,
     allowNull: false,
@@ -42,33 +70,30 @@ const User = sequelize.define('User', {
   password: {
     type: DataTypes.STRING,
     allowNull: false,
-    set(value) {
-      const hashedPassword = bcrypt.hashSync(value, 10); // Hash password before saving
-      this.setDataValue('password', hashedPassword);
-    },
     validate: {
-      notEmpty: {
-        msg: 'Password is required'
-      },
-      len: {
-        args: [6, 255], // Allow passwords between 6 and 255 characters
-        msg: 'Password must be between 6 and 255 characters'
-      }
+      notEmpty: { msg: 'Password is required' },
+      len: { args: [6, 255], msg: 'Password must be between 6 and 255 characters' }
     }
   },
   role: {
-    type: DataTypes.ENUM('user', 'admin'),
+    type: DataTypes.ENUM('user', 'admin', 'trainer'),
     defaultValue: 'user'
   }
 });
-
-User.hasOne(ContactDetails, { onDelete: 'CASCADE' });
-ContactDetails.belongsTo(User);
 
 User.hasOne(Address, { onDelete: 'CASCADE' });
 Address.belongsTo(User);
 
 User.hasMany(MeetingPoint, { onDelete: 'CASCADE' });
 MeetingPoint.belongsTo(User);
+
+User.hasOne(UserDetails, { onDelete: 'CASCADE' });
+UserDetails.belongsTo(User);
+
+User.hasOne(UserContactDetails, { onDelete: 'CASCADE' });
+UserContactDetails.belongsTo(User);
+
+User.hasOne(PaymentInfo, { onDelete: 'CASCADE' });
+PaymentInfo.belongsTo(User);
 
 module.exports = User;
