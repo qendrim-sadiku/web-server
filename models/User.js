@@ -52,6 +52,14 @@ const User = sequelize.define('User', {
       }
     }
   },
+  sportPreference: {
+    type: DataTypes.STRING,
+    allowNull: true
+  },
+  expertisePreference: {
+    type: DataTypes.STRING,
+    allowNull: true
+  },
   email: {
     type: DataTypes.STRING,
     allowNull: false,

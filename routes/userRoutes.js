@@ -60,19 +60,13 @@ router.put('/user/:userId/avatar', userController.updateUserAvatar);
 
 router.delete('/user/:userId/avatar', userController.removeUserAvatar);
 
+// Route to update user preferences
+router.put('/user/:userId/preferences', userController.updateUserPreferences);
 
-// // Configure Multer for file upload
-// const storage = multer.diskStorage({
-//     destination: (req, file, cb) => {
-//       cb(null, 'uploads/');
-//     },
-//     filename: (req, file, cb) => {
-//       cb(null, `${Date.now()}-${file.originalname}`);
-//     }
-//   });
-//   const upload = multer({ storage: storage });
-  
-//   router.put('/user-info', upload.single('avatar'), userController.updateUserInfo);
+// Route to get user preferences
+router.get('/user/:userId/preferences', userController.getUserPreferences);
 
+// Route to get specializations and expertise levels
+router.get('/specializations-expertise', userController.getSpecializationsAndExpertise);
 
 module.exports = router;
