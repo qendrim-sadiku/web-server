@@ -186,14 +186,25 @@ exports.getProfile = async (req, res) => {
 
 // Create new user
 exports.createUser = async (req, res) => {
-  const { username, email, password, role } = req.body;
+  const { name,surname,username, email, password, role } = req.body;
 
   try {
-    // Check if role is provided, if not, default to 'user'
+    // Check if the requesting user is an admin
+    const requestingUser = await User.findByPk(req.userId); // Assuming req.userId contains the ID of the requesting user
+    if (!requestingUser || requestingUser.role !== 'admin') {
+      return res.status(403).json({ message: 'Permission denied' });
+    }
+
+    // Hash the password
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    // Create the new user with the provided role, or default to 'user'
     const newUser = await User.create({
+      name,
+      surname,
       username,
       email,
-      password,
+      password: hashedPassword,
       role: role || 'user' // Default role to 'user' if not provided
     });
 
@@ -668,3 +679,58 @@ exports.removeUserAvatar = async (req, res) => {
     res.status(500).send({ message: 'Error removing avatar', error });
   }
 };
+
+// Update user preferences
+exports.updateUserPreferences = async (req, res) => {
+  const { userId, sportPreference, expertisePreference } = req.body;
+
+  try {
+    let user = await User.findByPk(userId);
+    if (!user) {
+      return res.status(404).send({ message: 'User not found' });
+    }
+
+    await user.update({ sportPreference, expertisePreference });
+
+    res.status(200).send({ message: 'Preferences updated successfully' });
+  } catch (error) {
+    console.error('Error updating preferences:', error);
+    res.status(500).send({ message: 'Error updating preferences', error: error.message || error });
+  }
+};
+
+exports.getSpecializationsAndExpertise = (req, res) => {
+  try {
+    const specializations = ['sport', 'art', 'science', 'technology', 'health', 'education'];
+    const expertiseLevels = ['beginner', 'pro', 'advanced'];
+
+    res.status(200).json({
+      specializations,
+      expertiseLevels
+    });
+  } catch (error) {
+    console.error('Error fetching specializations and expertise levels:', error);
+    res.status(500).json({ message: 'Error fetching specializations and expertise levels', error });
+  }
+};
+
+// Get user preferences
+exports.getUserPreferences = async (req, res) => {
+  const { userId } = req.params;
+
+  try {
+    const user = await User.findByPk(userId);
+    if (!user) {
+      return res.status(404).send({ message: 'User not found' });
+    }
+
+    res.status(200).json({
+      sportPreference: user.sportPreference,
+      expertisePreference: user.expertisePreference
+    });
+  } catch (error) {
+    console.error('Error fetching user preferences:', error);
+    res.status(500).json({ message: 'Error fetching user preferences', error });
+  }
+};
+
