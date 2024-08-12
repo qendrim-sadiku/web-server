@@ -17,7 +17,7 @@ const path = require('path');
 
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 10000;
 
 // Ensure the uploads directory exists
 const uploadDir = path.join(__dirname, 'uploads');
@@ -46,16 +46,6 @@ app.use('/api', categoryRoutes);
 
 // Serve static files from the uploads directory
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
-
-
-// sequelize.sync({ alter: true })
-//   .then(() => {
-//     console.log("Database synchronized");
-//   })
-//   .catch(error => {
-//     console.error("Error synchronizing database:", error);
-//   });
-
 
   
 app.listen(PORT, () => {
