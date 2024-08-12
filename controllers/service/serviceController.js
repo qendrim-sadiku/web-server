@@ -2,6 +2,7 @@ const Category = require('../../models/Category/Category');
 const SubCategory = require('../../models/Category/SubCategory');
 const {Service,ServiceTrainer} = require('../../models/Services/Service');
 const Trainer = require('../../models/Trainer/Trainer');
+const { Op } = require('sequelize');
 
 // Create a new service
 exports.createService = async (req, res) => {
@@ -154,5 +155,127 @@ exports.getTrainersForService = async (req, res) => {
     }
   } catch (error) {
     res.status(500).json({ error: error.message });
+  }
+};
+
+
+exports.getAllServices = async (req, res) => {
+  try {
+    const services = await Service.findAll({
+      include: [
+        {
+          model: SubCategory,
+          attributes: ['id', 'name'],
+          include: [
+            {
+              model: Category,
+              attributes: ['id', 'name'],
+            },
+          ],
+        },
+        {
+          model: Trainer,
+          attributes: ['id', 'name'],
+          through: { attributes: [] }, // Assuming many-to-many relationship without including junction table attributes
+        },
+      ],
+    });
+
+    const result = services.map(service => ({
+      id: service.id,
+      name: service.name,
+      description: service.description,
+      image: service.image,
+      duration: service.duration,
+      hourlyRate: service.hourlyRate,
+      level: service.level,
+      subCategoryId: service.SubCategory.id,
+      subCategoryName: service.SubCategory.name,
+      categoryId: service.SubCategory.Category.id,
+      categoryName: service.SubCategory.Category.name,
+      trainers: service.Trainers.map(trainer => ({
+        id: trainer.id,
+        name: trainer.name,
+      })),
+    }));
+
+    res.status(200).json(result);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+
+exports.filterServices = async (req, res) => {
+  try {
+    const { level, subCategoryName, search } = req.query;
+
+    // Define the query options
+    const queryOptions = {
+      where: {},
+      include: [
+        {
+          model: SubCategory,
+          attributes: ['id', 'name'],
+          where: {},
+          include: [
+            {
+              model: Category,
+              attributes: ['id', 'name'],
+            },
+          ],
+        },
+        {
+          model: Trainer,
+          attributes: ['id', 'name'],
+          through: { attributes: [] }, // Assuming many-to-many relationship without including junction table attributes
+        },
+      ],
+    };
+
+    // Add level filter if provided
+    if (level) {
+      queryOptions.where.level = level;
+    }
+
+    // Add subCategoryName filter if provided
+    if (subCategoryName) {
+      queryOptions.include[0].where.name = subCategoryName;
+    }
+
+    // Add search filter for name or description
+    if (search) {
+      queryOptions.where[Op.or] = [
+        { name: { [Op.like]: `%${search}%` } },
+        { description: { [Op.like]: `%${search}%` } },
+      ];
+    }
+
+    // Fetch the services from the database with the filters applied
+    const services = await Service.findAll(queryOptions);
+
+    // Format the result
+    const result = services.map(service => ({
+      id: service.id,
+      name: service.name,
+      description: service.description,
+      image: service.image,
+      duration: service.duration,
+      hourlyRate: service.hourlyRate,
+      level: service.level,
+      subCategoryId: service.SubCategory.id,
+      subCategoryName: service.SubCategory.name,
+      categoryId: service.SubCategory.Category.id,
+      categoryName: service.SubCategory.Category.name,
+      trainers: service.Trainers.map(trainer => ({
+        id: trainer.id,
+        name: trainer.name,
+      })),
+    }));
+
+    res.status(200).json(result);
+  } catch (error) {
+    console.error('Error filtering services:', error);
+    res.status(500).json({ error: 'An error occurred while filtering services' });
   }
 };
