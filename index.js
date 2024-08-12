@@ -27,14 +27,14 @@ app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(cors());
 
-// Test the Sequelize connection
-sequelize.authenticate()
-  .then(() => {
-    console.log('Connection to the database has been established successfully.');
-  })
-  .catch(err => {
-    console.error('Unable to connect to the database:', err);
-  });
+// // Test the Sequelize connection
+// sequelize.authenticate()
+//   .then(() => {
+//     console.log('Connection to the database has been established successfully.');
+//   })
+//   .catch(err => {
+//     console.error('Unable to connect to the database:', err);
+//   });
 
 // Routes
 app.use('/auth', authRoutes);
