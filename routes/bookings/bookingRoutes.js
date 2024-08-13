@@ -7,5 +7,7 @@ router.get('/bookings/user/:userId', bookingController.getAllBookingsOfUser);
 router.get('/bookings/:id', bookingController.getBookingById);
 router.put('/booking/:id', bookingController.editBooking);
 router.put('/bookings/:id/cancel', bookingController.cancelBooking);
+router.post('/bookings/:bookingId/rebook', bookingController.rebookService);
+
 
 module.exports = router;

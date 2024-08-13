@@ -242,3 +242,56 @@ exports.cancelBooking = async (req, res) => {
       res.status(500).json({ error: error.message });
     }
   };
+
+
+  // Rebook a service
+exports.rebookService = async (req, res) => {
+  try {
+    const { bookingId } = req.params;
+
+    // Fetch the original booking details
+    const originalBooking = await Booking.findByPk(bookingId, {
+      include: [Participant, BookingDate]
+    });
+
+    if (!originalBooking) {
+      return res.status(404).json({ message: 'Original booking not found' });
+    }
+
+    // Prepare the data for the new booking
+    const newBookingData = {
+      userId: originalBooking.userId,
+      serviceId: originalBooking.serviceId,
+      trainerId: originalBooking.trainerId,
+      address: originalBooking.address,
+      totalPrice: 0 // Set to 0 for now; the price will be recalculated based on new dates
+    };
+
+    // Create the new booking without saving it to the database yet
+    const newBooking = Booking.build(newBookingData);
+
+    // Attach the original participants to the new booking (but don't save them yet)
+    if (originalBooking.Participants && originalBooking.Participants.length > 0) {
+      newBooking.Participants = originalBooking.Participants.map(participant => ({
+        name: participant.name,
+        surname: participant.surname,
+        age: participant.age,
+        category: participant.category,
+        bookingId: null // Set to null since this is a new booking
+      }));
+    }
+
+    // Return the new booking details, leaving date and time fields empty
+    res.status(200).json({
+      message: 'Service rebooked successfully. Please review and update the details as needed.',
+      booking: newBooking,
+      participants: newBooking.Participants,
+      address: newBooking.address,
+      // Leave dates empty for the user to fill in
+      dates: []
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+    console.error(error);
+  }
+};
