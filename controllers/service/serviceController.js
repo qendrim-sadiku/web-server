@@ -2,7 +2,6 @@ const Category = require('../../models/Category/Category');
 const SubCategory = require('../../models/Category/SubCategory');
 const {Service,ServiceTrainer} = require('../../models/Services/Service');
 const Trainer = require('../../models/Trainer/Trainer');
-const { Op } = require('sequelize');
 
 // Create a new service
 exports.createService = async (req, res) => {
@@ -208,74 +207,22 @@ exports.getAllServices = async (req, res) => {
 
 exports.filterServices = async (req, res) => {
   try {
-    const { level, subCategoryName, search } = req.query;
+      const { level, subCategoryName } = req.query;
 
-    // Define the query options
-    const queryOptions = {
-      where: {},
-      include: [
-        {
-          model: SubCategory,
-          attributes: ['id', 'name'],
-          where: {},
-          include: [
-            {
-              model: Category,
-              attributes: ['id', 'name'],
-            },
-          ],
-        },
-        {
-          model: Trainer,
-          attributes: ['id', 'name'],
-          through: { attributes: [] }, // Assuming many-to-many relationship without including junction table attributes
-        },
-      ],
-    };
+      // Build a query object based on the parameters
+      const query = {};
+      if (level) {
+          query.level = level;
+      }
+      if (subCategoryName) {
+          query.subCategoryName = subCategoryName;
+      }
 
-    // Add level filter if provided
-    if (level) {
-      queryOptions.where.level = level;
-    }
+      // Fetch the services from the database with the filters applied
+      const services = await Service.findAll({ where: query });
 
-    // Add subCategoryName filter if provided
-    if (subCategoryName) {
-      queryOptions.include[0].where.name = subCategoryName;
-    }
-
-    // Add search filter for name or description
-    if (search) {
-      queryOptions.where[Op.or] = [
-        { name: { [Op.like]: `%${search}%` } },
-        { description: { [Op.like]: `%${search}%` } },
-      ];
-    }
-
-    // Fetch the services from the database with the filters applied
-    const services = await Service.findAll(queryOptions);
-
-    // Format the result
-    const result = services.map(service => ({
-      id: service.id,
-      name: service.name,
-      description: service.description,
-      image: service.image,
-      duration: service.duration,
-      hourlyRate: service.hourlyRate,
-      level: service.level,
-      subCategoryId: service.SubCategory.id,
-      subCategoryName: service.SubCategory.name,
-      categoryId: service.SubCategory.Category.id,
-      categoryName: service.SubCategory.Category.name,
-      trainers: service.Trainers.map(trainer => ({
-        id: trainer.id,
-        name: trainer.name,
-      })),
-    }));
-
-    res.status(200).json(result);
+      res.status(200).json(services);
   } catch (error) {
-    console.error('Error filtering services:', error);
-    res.status(500).json({ error: 'An error occurred while filtering services' });
+      res.status(500).json({ error: 'An error occurred while filtering services' });
   }
 };
