@@ -6,6 +6,6 @@ router.post('/bookings', bookingController.createBooking);
 router.get('/bookings/user/:userId', bookingController.getAllBookingsOfUser);
 router.get('/bookings/:id', bookingController.getBookingById);
 router.put('/booking/:id', bookingController.editBooking);
-router.delete('/booking/:id', bookingController.deleteBooking);
+router.put('/bookings/:id/cancel', bookingController.cancelBooking);
 
 module.exports = router;
