@@ -1,45 +1,49 @@
 const { DataTypes } = require('sequelize');
 const sequelize = require('../../config/sequelize');
-const {Service} = require('../Services/Service');
+const { Service } = require('../Services/Service');
 const Trainer = require('../Trainer/Trainer');
-
 
 const Booking = sequelize.define('Booking', {
   id: {
     type: DataTypes.INTEGER,
     autoIncrement: true,
-    primaryKey: true
+    primaryKey: true,
   },
   userId: {
     type: DataTypes.INTEGER,
-    allowNull: false
+    allowNull: false,
   },
   trainerId: {
     type: DataTypes.INTEGER,
     references: {
       model: Trainer,
-      key: 'id'
+      key: 'id',
     },
-    allowNull: false
+    allowNull: false,
   },
   serviceId: {
     type: DataTypes.INTEGER,
     references: {
       model: 'Service',
-      key: 'id'
+      key: 'id',
     },
-    allowNull: false
+    allowNull: false,
   },
   address: {
     type: DataTypes.STRING,
-    allowNull: false
+    allowNull: false,
   },
   totalPrice: {
     type: DataTypes.FLOAT,
-    allowNull: false
-  }
+    allowNull: false,
+  },
+  status: {
+    type: DataTypes.STRING,
+    allowNull: false,
+    defaultValue: 'active', // Default status for new bookings
+  },
 }, {
-  timestamps: true
+  timestamps: true,
 });
 
 Service.hasMany(Booking, { foreignKey: 'serviceId' });

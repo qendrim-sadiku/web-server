@@ -9,45 +9,58 @@ const { Service } = require('../../models/Services/Service');
 
 // Create a new booking
 exports.createBooking = async (req, res) => {
-    try {
-      const { userId, serviceId, trainerId, address, participants, dates } = req.body;
-  
-      // Calculate total price based on participants and dates
-      const trainer = await Trainer.findByPk(trainerId);
-      const totalPrice = (participants.length * dates.length * trainer.hourlyRate);
-  
-      const booking = await Booking.create({
-        userId,
-        serviceId,
-        trainerId,
-        address,
-        totalPrice
-      });
-  
-      // Add participants
-      if (participants && participants.length > 0) {
-        const participantData = participants.map(participant => ({
-          ...participant,
-          bookingId: booking.id
-        }));
-        await Participant.bulkCreate(participantData);
-      }
-  
-      // Add dates
-      if (dates && dates.length > 0) {
-        const dateData = dates.map(date => ({
-          ...date,
-          bookingId: booking.id
-        }));
-        await BookingDate.bulkCreate(dateData);
-      }
-  
-      res.status(201).json(booking);
-    } catch (error) {
-      res.status(500).json({ error: error.message });
-      console.error(error);
+  try {
+    const { userId, serviceId, trainerId, address, participants, dates } = req.body;
+
+    // Ensure dates array is not empty
+    if (!dates || dates.length === 0) {
+      return res.status(400).json({ message: 'Booking dates are required' });
     }
-  };
+
+    // Fetch the trainer to get the hourly rate
+    const trainer = await Trainer.findByPk(trainerId);
+    if (!trainer) {
+      return res.status(404).json({ message: 'Trainer not found' });
+    }
+
+    // Calculate total price based on the number of dates and the trainer's hourly rate
+    const totalPrice = dates.length * trainer.hourlyRate;
+
+    console.log(`Dates: ${dates.length}, Hourly Rate: ${trainer.hourlyRate}, Total Price: ${totalPrice}`);
+
+    const booking = await Booking.create({
+      userId,
+      serviceId,
+      trainerId,
+      address,
+      totalPrice
+    });
+
+    // Add participants (if any)
+    if (participants && participants.length > 0) {
+      const participantData = participants.map(participant => ({
+        ...participant,
+        bookingId: booking.id
+      }));
+      await Participant.bulkCreate(participantData);
+    }
+
+    // Add dates
+    if (dates && dates.length > 0) {
+      const dateData = dates.map(date => ({
+        ...date,
+        bookingId: booking.id
+      }));
+      await BookingDate.bulkCreate(dateData);
+    }
+
+    res.status(201).json(booking);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+    console.error(error);
+  }
+};
+
   
   // Get all bookings of a user
   exports.getAllBookingsOfUser = async (req, res) => {
@@ -129,21 +142,102 @@ exports.createBooking = async (req, res) => {
     }
   };
   
-  // Delete a booking
-  exports.deleteBooking = async (req, res) => {
+  // // Delete a booking
+  // exports.deleteBooking = async (req, res) => {
+  //   try {
+  //     const { id } = req.params;
+  
+  //     const booking = await Booking.findByPk(id);
+  //     if (!booking) {
+  //       return res.status(404).json({ message: 'Booking not found' });
+  //     }
+  
+  //     await Participant.destroy({ where: { bookingId: id } });
+  //     await BookingDate.destroy({ where: { bookingId: id } });
+  //     await booking.destroy();
+  
+  //     res.status(200).json({ message: 'Booking deleted successfully' });
+  //   } catch (error) {
+  //     res.status(500).json({ error: error.message });
+  //   }
+  // };
+
+// Cancel a booking
+exports.cancelBooking = async (req, res) => {
+  try {
+    const { id } = req.params; // Extract the booking ID from the request parameters
+
+    // Find the booking by its ID
+    const booking = await Booking.findByPk(id);
+    if (!booking) {
+      return res.status(404).json({ message: 'Booking not found' }); // Return 404 if the booking is not found
+    }
+
+    // Update the status of the booking to 'canceled'
+    booking.status = 'canceled';
+    await booking.save(); // Save the updated booking
+
+    res.status(200).json({ message: 'Booking canceled successfully' }); // Return success message
+  } catch (error) {
+    res.status(500).json({ error: error.message }); // Handle any errors that occur during the process
+  }
+};
+
+
+
+
+  exports.getUserBookings = async (req, res) => {
     try {
-      const { id } = req.params;
+      const userId = req.user.id; // Assuming the user ID is obtained from authenticated user
+      const currentDate = new Date(); // Get the current date
   
-      const booking = await Booking.findByPk(id);
-      if (!booking) {
-        return res.status(404).json({ message: 'Booking not found' });
-      }
+      // Fetch bookings with related services and trainers
+      const bookings = await Booking.findAll({
+        where: { userId },
+        include: [
+          {
+            model: Service,
+            attributes: ['id', 'name', 'description', 'image', 'duration', 'hourlyRate', 'level'],
+            include: [
+              {
+                model: SubCategory,
+                attributes: ['id', 'name'],
+                include: [
+                  {
+                    model: Category,
+                    attributes: ['id', 'name'],
+                  },
+                ],
+              },
+              {
+                model: Trainer,
+                attributes: ['id', 'name'],
+                through: { attributes: [] }, // Many-to-many relationship without including junction table attributes
+              },
+            ],
+          },
+        ],
+      });
   
-      await Participant.destroy({ where: { bookingId: id } });
-      await BookingDate.destroy({ where: { bookingId: id } });
-      await booking.destroy();
+      // Categorize bookings
+      const categorizedBookings = {
+        upcoming: [],
+        past: [],
+        canceled: [],
+      };
   
-      res.status(200).json({ message: 'Booking deleted successfully' });
+      bookings.forEach(booking => {
+        const bookingDate = new Date(booking.date); // Assuming booking has a date field
+        if (booking.status === 'canceled') {
+          categorizedBookings.canceled.push(booking);
+        } else if (bookingDate > currentDate) {
+          categorizedBookings.upcoming.push(booking);
+        } else {
+          categorizedBookings.past.push(booking);
+        }
+      });
+  
+      res.status(200).json(categorizedBookings);
     } catch (error) {
       res.status(500).json({ error: error.message });
     }
