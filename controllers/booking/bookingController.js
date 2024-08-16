@@ -23,10 +23,36 @@ exports.createBooking = async (req, res) => {
       return res.status(404).json({ message: 'Trainer not found' });
     }
 
-    // Calculate total price based on the number of dates and the trainer's hourly rate
-    const totalPrice = dates.length * trainer.hourlyRate;
+    let totalPrice = 0;
 
-    console.log(`Dates: ${dates.length}, Hourly Rate: ${trainer.hourlyRate}, Total Price: ${totalPrice}`);
+    // Validate and calculate total price based on the number of hours booked and the trainer's hourly rate
+    for (let date of dates) {
+      const { date: datePart, startTime, endTime } = date;
+
+      if (!startTime || !endTime) {
+        return res.status(400).json({ message: 'Start time and end time are required for each booking date' });
+      }
+
+      // Combine the date with the start and end times to create full Date objects
+      const startDateTime = new Date(`${datePart}T${startTime}`);
+      const endDateTime = new Date(`${datePart}T${endTime}`);
+
+      // Ensure startDateTime and endDateTime are valid dates
+      if (isNaN(startDateTime.getTime()) || isNaN(endDateTime.getTime())) {
+        return res.status(400).json({ message: 'Invalid date format for start time or end time' });
+      }
+
+      const hours = (endDateTime - startDateTime) / (1000 * 60 * 60); // Convert milliseconds to hours
+
+      // Ensure the number of hours is a positive value
+      if (hours <= 0) {
+        return res.status(400).json({ message: 'End time must be greater than start time' });
+      }
+
+      totalPrice += hours * trainer.hourlyRate;
+    }
+
+    console.log(`Total Price: ${totalPrice}`);
 
     const booking = await Booking.create({
       userId,
@@ -60,6 +86,7 @@ exports.createBooking = async (req, res) => {
     console.error(error);
   }
 };
+
 
   
   // Get all bookings of a user
@@ -102,7 +129,6 @@ exports.createBooking = async (req, res) => {
     }
   };
   
-  // Edit a booking
   exports.editBooking = async (req, res) => {
     try {
       const { id } = req.params;
@@ -113,11 +139,12 @@ exports.createBooking = async (req, res) => {
         return res.status(404).json({ message: 'Booking not found' });
       }
   
+      // Update address
       booking.address = address || booking.address;
   
-      // Update participants
+      // Update participants: Handle clearing of participants if the array is empty or provided
+      await Participant.destroy({ where: { bookingId: id } }); // Clear existing participants
       if (participants && participants.length > 0) {
-        await Participant.destroy({ where: { bookingId: id } });
         const participantData = participants.map(participant => ({
           ...participant,
           bookingId: id
@@ -125,22 +152,60 @@ exports.createBooking = async (req, res) => {
         await Participant.bulkCreate(participantData);
       }
   
-      // Update dates
+      // Initialize total price to 0
+      let totalPrice = 0;
+  
+      // Fetch the trainer to get the hourly rate
+      const trainer = await Trainer.findByPk(booking.trainerId);
+      if (!trainer) {
+        return res.status(404).json({ message: 'Trainer not found' });
+      }
+  
+      // Update dates and calculate total price based on hours
+      await BookingDate.destroy({ where: { bookingId: id } }); // Clear existing dates
       if (dates && dates.length > 0) {
-        await BookingDate.destroy({ where: { bookingId: id } });
-        const dateData = dates.map(date => ({
-          ...date,
-          bookingId: id
-        }));
+        const dateData = dates.map(date => {
+          const { date: datePart, startTime, endTime } = date;
+  
+          // Validate and combine date and time
+          const startDateTime = new Date(`${datePart}T${startTime}`);
+          const endDateTime = new Date(`${datePart}T${endTime}`);
+  
+          // Ensure startDateTime and endDateTime are valid dates
+          if (isNaN(startDateTime.getTime()) || isNaN(endDateTime.getTime())) {
+            throw new Error('Invalid date format for start time or end time');
+          }
+  
+          const hours = (endDateTime - startDateTime) / (1000 * 60 * 60); // Convert milliseconds to hours
+  
+          // Ensure the number of hours is a positive value
+          if (hours <= 0) {
+            throw new Error('End time must be greater than start time');
+          }
+  
+          // Accumulate the total price
+          totalPrice += hours * trainer.hourlyRate;
+  
+          return {
+            ...date,
+            bookingId: id
+          };
+        });
+  
         await BookingDate.bulkCreate(dateData);
       }
   
+      // Update total price: If no dates are provided, totalPrice will remain 0
+      booking.totalPrice = totalPrice;
       await booking.save();
+  
       res.status(200).json(booking);
     } catch (error) {
       res.status(500).json({ error: error.message });
     }
   };
+  
+  
   
   // // Delete a booking
   // exports.deleteBooking = async (req, res) => {
