@@ -1,11 +1,9 @@
-// controllers/authController.js
 const bcrypt = require('bcrypt');
-const { Op } = require('sequelize'); // Make sure to import Op from sequelize
-
 const jwt = require('jsonwebtoken');
+const { Op } = require('sequelize');
 const User = require('../models/User');
 
-
+// User signup
 exports.signup = async (req, res) => {
   const { name, surname, username, email, password } = req.body;
 
@@ -45,11 +43,8 @@ exports.signup = async (req, res) => {
     // Check if username or email already exists
     const existingUser = await User.findOne({
       where: {
-        [Op.or]: [
-          { username: username },
-          { email: email }
-        ]
-      }
+        [Op.or]: [{ username: username }, { email: email }],
+      },
     });
 
     if (existingUser) {
@@ -62,14 +57,22 @@ exports.signup = async (req, res) => {
     // Create user with hashed password
     const newUser = await User.create({ name, surname, username, email, password: hashedPassword });
 
-    // Generate JWT token
-    const token = jwt.sign({ id: newUser.id, role: newUser.role }, process.env.JWT_SECRET, { expiresIn: '1h' });
+    // Generate JWT token with 24-hour expiration
+    const token = jwt.sign(
+      { id: newUser.id, role: newUser.role },
+      process.env.JWT_SECRET,
+      { expiresIn: '24h' } // Set token expiration to 24 hours
+    );
 
-    res.status(201).json({ message: 'User created successfully', token, user: { id: newUser.id, username: newUser.username, email: newUser.email, role: newUser.role } });
+    res.status(201).json({
+      message: 'User created successfully',
+      token,
+      user: { id: newUser.id, username: newUser.username, email: newUser.email, role: newUser.role },
+    });
   } catch (error) {
     // Handle Sequelize validation errors
     if (error.name === 'SequelizeValidationError' || error.name === 'SequelizeUniqueConstraintError') {
-      const sequelizeErrors = error.errors.map(err => ({ field: err.path, message: err.message }));
+      const sequelizeErrors = error.errors.map((err) => ({ field: err.path, message: err.message }));
       return res.status(400).json({ error: sequelizeErrors });
     }
 
@@ -79,12 +82,12 @@ exports.signup = async (req, res) => {
   }
 };
 
+// User login
 exports.login = async (req, res) => {
   const { emailOrUsername, password } = req.body;
 
   // Validate fields
   const errors = [];
-
   if (!emailOrUsername) errors.push({ field: 'emailOrUsername', message: 'Email or Username is required' });
   if (!password) errors.push({ field: 'password', message: 'Password is required' });
 
@@ -96,11 +99,8 @@ exports.login = async (req, res) => {
     // Check if user exists with the given email or username
     const user = await User.findOne({
       where: {
-        [Op.or]: [
-          { email: emailOrUsername },
-          { username: emailOrUsername }
-        ]
-      }
+        [Op.or]: [{ email: emailOrUsername }, { username: emailOrUsername }],
+      },
     });
 
     if (!user) {
@@ -113,18 +113,25 @@ exports.login = async (req, res) => {
       return res.status(400).json({ error: 'Invalid email/username or password' });
     }
 
-    // Generate JWT token
-    const token = jwt.sign({ id: user.id, role: user.role }, process.env.JWT_SECRET, { expiresIn: '1h' });
+    // Generate JWT token with 24-hour expiration
+    const token = jwt.sign(
+      { id: user.id, role: user.role },
+      process.env.JWT_SECRET,
+      { expiresIn: '24h' } // Set token expiration to 24 hours
+    );
 
-    res.status(200).json({ message: 'Login successful', token, user: { id: user.id, username: user.username, email: user.email, role: user.role } });
+    res.status(200).json({
+      message: 'Login successful',
+      token,
+      user: { id: user.id, username: user.username, email: user.email, role: user.role },
+    });
   } catch (error) {
-    // Handle other errors
     console.error('Login error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 };
 
-
+// Change password
 exports.changePassword = async (req, res) => {
   const { userId } = req.params;
   const { currentPassword, newPassword } = req.body;
@@ -140,7 +147,10 @@ exports.changePassword = async (req, res) => {
   } else {
     const passwordRegex = /^(?=.*\d)(?=.*[a-z])(?=.*[A-Z])(?=.*[a-zA-Z]).{8,}$/;
     if (!passwordRegex.test(newPassword)) {
-      errors.push({ field: 'newPassword', message: 'Password must be at least 8 characters long and contain at least one uppercase letter, one lowercase letter, and one number' });
+      errors.push({
+        field: 'newPassword',
+        message: 'Password must be at least 8 characters long and contain at least one uppercase letter, one lowercase letter, and one number',
+      });
     }
   }
 
@@ -173,4 +183,18 @@ exports.changePassword = async (req, res) => {
     console.error('Change password error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
+};
+
+// Middleware to authenticate token
+exports.authenticateToken = (req, res, next) => {
+  const token = req.header('Authorization')?.replace('Bearer ', '');
+
+  if (!token) return res.status(401).json({ error: 'No token provided' });
+
+  jwt.verify(token, process.env.JWT_SECRET, (err, decoded) => {
+    if (err) return res.status(403).json({ error: 'Token expired or invalid' });
+
+    req.user = decoded; // Attach decoded user to request
+    next();
+  });
 };

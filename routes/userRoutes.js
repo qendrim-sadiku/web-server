@@ -1,72 +1,67 @@
-// routes/userRoutes.js
-
 const express = require('express');
 const router = express.Router();
-const verifyAdmin= require('../middleware/authMiddleware');
-const authenticateJWT = require('../middleware/authMiddleware');
+const { authenticateJWT, verifyAdmin } = require('../middleware/authMiddleware');
 const userController = require('../controllers/userController');
-const multer = require('multer');
 
-
-// Example route to create a user with role restriction
+// Example route to create a user with role restriction (admin only)
 router.post('/create', verifyAdmin, userController.createUser);
-
 
 // Fetch all users (restricted to admins)
 router.get('/all', verifyAdmin, userController.getAllUsers);
 
-
-// Route for creating or updating user profile
+// Route for creating or updating user profile (authenticated users only)
 router.post('/profile', authenticateJWT, userController.updateProfile);
 
-// Route for fetching user profile by userId
-router.get('/profile/:userId',  userController.getProfile);
+// Route for fetching user profile by userId (authenticated users only)
+router.get('/profile/:userId', authenticateJWT, userController.getProfile);
 
-// Route for fetching user profile by userId
-router.put('/profile/:userId',  userController.updateProfile);
+// Route for updating user profile by userId (authenticated users only)
+router.put('/profile/:userId', authenticateJWT, userController.updateProfile);
 
-// Route for creating or updating user profile
-router.post('/verify',  userController.verifyCurrentPassword);
+// Route to verify current password (authenticated users only)
+router.post('/verify', authenticateJWT, userController.verifyCurrentPassword);
 
-// Route for creating or updating user profile
-router.put('/change-password',  userController.updatePassword);
+// Route for updating password (authenticated users only)
+router.put('/change-password', authenticateJWT, userController.updatePassword);
 
-// // Update contact details
-router.put('/update-contact-details', userController.updateContactDetails);
+// Update contact details (authenticated users only)
+router.put('/update-contact-details', authenticateJWT, userController.updateContactDetails);
 
-// // Update address
-router.put('/update-address', userController.updateAddress);
+// Update address (authenticated users only)
+router.put('/update-address', authenticateJWT, userController.updateAddress);
 
-// // Update meeting points
-router.put('/update-meeting-points', userController.updateMeetingPoints);
+// Update meeting points (authenticated users only)
+router.put('/update-meeting-points', authenticateJWT, userController.updateMeetingPoints);
 
-// // Update user details
-router.put('/update-user-details', userController.updateUserDetails);
+// Update user details (authenticated users only)
+router.put('/update-user-details', authenticateJWT, userController.updateUserDetails);
 
-// // Update payment info
-router.put('/update-payment-info', userController.updatePaymentInfo);
+// Update payment info (authenticated users only)
+router.put('/update-payment-info', authenticateJWT, userController.updatePaymentInfo);
 
-router.put('/user-info', userController.updateUserInfo);
+// Update user info (authenticated users only)
+router.put('/user-info', authenticateJWT, userController.updateUserInfo);
 
-router.get('/user/:userId', userController.getUser);
-router.get('/user/:userId/address', userController.getUserAddress);
-router.get('/user/:userId/contact-details', userController.getUserContactDetails);
-router.get('/user/:userId/meeting-point', userController.getMeetingPoints);
-router.get('/user/:userId/details', userController.getUserDetails);
-router.get('/user/:userId/payment-info', userController.getUserPaymentInfo);
+// Get user details by userId (authenticated users only)
+router.get('/user/:userId', authenticateJWT, userController.getUser);
+router.get('/user/:userId/address', authenticateJWT, userController.getUserAddress);
+router.get('/user/:userId/contact-details', authenticateJWT, userController.getUserContactDetails);
+router.get('/user/:userId/meeting-point', authenticateJWT, userController.getMeetingPoints);
+router.get('/user/:userId/details', authenticateJWT, userController.getUserDetails);
+router.get('/user/:userId/payment-info', authenticateJWT, userController.getUserPaymentInfo);
 
-router.get('/user/:userId/avatar', userController.getUserAvatar);
-router.put('/user/:userId/avatar', userController.updateUserAvatar);
+// Handle user avatar (authenticated users only)
+router.get('/user/:userId/avatar', authenticateJWT, userController.getUserAvatar);
+router.put('/user/:userId/avatar', authenticateJWT, userController.updateUserAvatar);
+router.delete('/user/:userId/avatar', authenticateJWT, userController.removeUserAvatar);
 
-router.delete('/user/:userId/avatar', userController.removeUserAvatar);
+// Route to update user preferences (authenticated users only)
+router.put('/user/:userId/preferences', authenticateJWT, userController.updateUserPreferences);
 
-// Route to update user preferences
-router.put('/user/:userId/preferences', userController.updateUserPreferences);
+// Route to get user preferences (authenticated users only)
+router.get('/user/:userId/preferences', authenticateJWT, userController.getUserPreferences);
 
-// Route to get user preferences
-router.get('/user/:userId/preferences', userController.getUserPreferences);
-
-// Route to get specializations and expertise levels
+// Route to get specializations and expertise levels (public route, no authentication)
 router.get('/specializations-expertise', userController.getSpecializationsAndExpertise);
 
 module.exports = router;
