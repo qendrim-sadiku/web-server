@@ -3,8 +3,10 @@ const Booking = require('../../models/Bookings/Booking');
 const Participant = require('../../models/Bookings/Participant');
 const BookingDate = require('../../models/Bookings/BookingDate');
 const  Trainer  = require('../../models/Trainer/Trainer');
-
+const ServiceDetails = require('../../models/Services/ServiceDetails');
 const { Service } = require('../../models/Services/Service');
+const SubCategory = require('../../models/Category/SubCategory');
+const Category = require('../../models/Category/Category');
 
 
 // Create a new booking
@@ -89,46 +91,89 @@ exports.createBooking = async (req, res) => {
 
 
   
-  // Get all bookings of a user
-  exports.getAllBookingsOfUser = async (req, res) => {
-    try {
-      const { userId } = req.params;
-      const bookings = await Booking.findAll({
-        where: { userId },
-        include: [
-          { model: Participant },
-          { model: BookingDate },
-          { model: Service },
-          { model: Trainer }
-        ]
-      });
-      res.status(200).json(bookings);
-    } catch (error) {
-      res.status(500).json({ error: error.message });
+exports.getAllBookingsOfUser = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const bookings = await Booking.findAll({
+      where: { userId },
+      include: [
+        { model: Participant },
+        { model: BookingDate },
+        {
+          model: Service,
+          attributes: ['id', 'name', 'description', 'image', 'duration', 'hourlyRate', 'level'],
+          include: [
+            {
+              model: ServiceDetails, // Include service details
+              attributes: ['fullDescription', 'highlights', 'whatsIncluded', 'whatsNotIncluded', 'recommendations', 'coachInfo'],
+            },
+            {
+              model: Trainer, // Include trainers if needed
+            },
+            {
+              model: SubCategory,
+              attributes: ['id', 'name'],
+              include: [
+                {
+                  model: Category,
+                  attributes: ['id', 'name'],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+
+    res.status(200).json(bookings);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+exports.getBookingById = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const booking = await Booking.findByPk(id, {
+      include: [
+        { model: Participant },
+        { model: BookingDate },
+        {
+          model: Service,
+          attributes: ['id', 'name', 'description', 'image', 'duration', 'hourlyRate', 'level'],
+          include: [
+            {
+              model: ServiceDetails,
+              attributes: [
+                'fullDescription', 
+                'highlights', 
+                'whatsIncluded', 
+                'whatsNotIncluded', 
+                'recommendations', 
+                'whatsToBring', // Include this field
+                'coachInfo'
+              ],
+            },
+            {
+              model: Trainer,
+            },
+          ],
+        },
+      ],
+    });
+    
+    if (!booking) {
+      return res.status(404).json({ message: 'Booking not found' });
     }
-  };
-  
-  // Get a single booking by ID
-  exports.getBookingById = async (req, res) => {
-    try {
-      const { id } = req.params;
-      const booking = await Booking.findByPk(id, {
-        include: [
-          { model: Participant },
-          { model: BookingDate },
-          { model: Service },
-          { model: Trainer }
-        ]
-      });
-      if (!booking) {
-        return res.status(404).json({ message: 'Booking not found' });
-      }
-      res.status(200).json(booking);
-    } catch (error) {
-      res.status(500).json({ error: error.message });
-    }
-  };
-  
+
+    res.status(200).json(booking);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+
+
   exports.editBooking = async (req, res) => {
     try {
       const { id } = req.params;
@@ -251,62 +296,71 @@ exports.cancelBooking = async (req, res) => {
 
 
 
-  exports.getUserBookings = async (req, res) => {
-    try {
-      const userId = req.user.id; // Assuming the user ID is obtained from authenticated user
-      const currentDate = new Date(); // Get the current date
-  
-      // Fetch bookings with related services and trainers
-      const bookings = await Booking.findAll({
-        where: { userId },
-        include: [
-          {
-            model: Service,
-            attributes: ['id', 'name', 'description', 'image', 'duration', 'hourlyRate', 'level'],
-            include: [
-              {
-                model: SubCategory,
-                attributes: ['id', 'name'],
-                include: [
-                  {
-                    model: Category,
-                    attributes: ['id', 'name'],
-                  },
-                ],
-              },
-              {
-                model: Trainer,
-                attributes: ['id', 'name'],
-                through: { attributes: [] }, // Many-to-many relationship without including junction table attributes
-              },
-            ],
-          },
-        ],
-      });
-  
-      // Categorize bookings
-      const categorizedBookings = {
-        upcoming: [],
-        past: [],
-        canceled: [],
-      };
-  
-      bookings.forEach(booking => {
-        const bookingDate = new Date(booking.date); // Assuming booking has a date field
+// Get user bookings with categorized data
+exports.getUserBookings = async (req, res) => {
+  try {
+    const userId = req.user.id; // Assuming the user ID is obtained from authenticated user
+    const currentDate = new Date(); // Get the current date
+
+    // Fetch bookings with related services, trainers, subcategories, categories, and booking dates
+    const bookings = await Booking.findAll({
+      where: { userId },
+      include: [
+        {
+          model: Service,
+          attributes: ['id', 'name', 'description', 'image', 'duration', 'hourlyRate', 'level'],
+          include: [
+            {
+              model: SubCategory,
+              attributes: ['id', 'name'],
+              include: [
+                {
+                  model: Category,
+                  attributes: ['id', 'name'],
+                },
+              ],
+            },
+            {
+              model: Trainer,
+              attributes: ['id', 'name'],
+              through: { attributes: [] }, // Many-to-many relationship without including junction table attributes
+            },
+          ],
+        },
+        {
+          model: BookingDate, // Include BookingDate here to access the booking dates
+          attributes: ['date', 'startTime', 'endTime'], // Make sure to include the date and time fields
+        },
+      ],
+    });
+
+    // Categorize bookings
+    const categorizedBookings = {
+      upcoming: [],
+      past: [],
+      canceled: [],
+    };
+
+    bookings.forEach(booking => {
+      // Assuming each booking has multiple dates in the BookingDate array
+      booking.BookingDates.forEach(bookingDate => {
+        const bookingDateTime = new Date(`${bookingDate.date}T${bookingDate.startTime}`);
         if (booking.status === 'canceled') {
           categorizedBookings.canceled.push(booking);
-        } else if (bookingDate > currentDate) {
+        } else if (bookingDateTime > currentDate) {
           categorizedBookings.upcoming.push(booking);
         } else {
           categorizedBookings.past.push(booking);
         }
       });
-  
-      res.status(200).json(categorizedBookings);
-    } catch (error) {
-      res.status(500).json({ error: error.message });
-    }
-  };
+    });
+
+    res.status(200).json(categorizedBookings);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
 
 
   // Rebook a service

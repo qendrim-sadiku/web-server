@@ -10,6 +10,7 @@ router.get('/:id/trainers', serviceController.getTrainersForService);
 router.get('/categories/:categoryId/services-all', serviceController.getAllServicesByCategory);
 router.get('/categories/:categoryId/subcategories/:subCategoryId', serviceController.getSubcategoryByCategory);
 router.get('/:id', serviceController.getServiceById); // Place this last
+router.get('/:serviceId/similar', serviceController.getSimilarServices);
 
 
 
