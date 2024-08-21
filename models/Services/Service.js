@@ -2,6 +2,7 @@ const { DataTypes } = require('sequelize');
 const sequelize = require('../../config/sequelize');
 const Trainer = require('../Trainer/Trainer');
 const SubCategory = require('../Category/SubCategory');
+const ServiceDetails = require('./ServiceDetails'); // Import ServiceDetails model
 
 const Service = sequelize.define('Service', {
   id: {
@@ -65,6 +66,11 @@ const ServiceTrainer = sequelize.define('ServiceTrainer', {
 }, {
   timestamps: true // This ensures Sequelize automatically handles createdAt and updatedAt
 });
+
+
+// Define associations
+Service.hasOne(ServiceDetails, { foreignKey: 'serviceId', onDelete: 'CASCADE' });
+ServiceDetails.belongsTo(Service, { foreignKey: 'serviceId' });
 
 Service.belongsToMany(Trainer, { through: ServiceTrainer, foreignKey: 'serviceId' });
 Trainer.belongsToMany(Service, { through: ServiceTrainer, foreignKey: 'trainerId' });
