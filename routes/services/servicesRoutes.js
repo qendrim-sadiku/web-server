@@ -12,6 +12,8 @@ router.get('/categories/:categoryId/subcategories/:subCategoryId', serviceContro
 router.get('/:id', serviceController.getServiceById); // Place this last
 router.get('/:serviceId/similar', serviceController.getSimilarServices);
 
+// New route: Get all services provided by a specific trainer
+router.get('/trainer/:trainerId', serviceController.getServicesByTrainer);
 
 
 module.exports = router;
