@@ -337,3 +337,60 @@ exports.getSimilarServices = async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 };
+
+// Get all services provided by a specific trainer
+exports.getServicesByTrainer = async (req, res) => {
+  try {
+    const { trainerId } = req.params;
+
+    // Fetch services for the specified trainer
+    const services = await Service.findAll({
+      include: [
+        {
+          model: Trainer,
+          where: { id: trainerId }, // Filter by trainerId
+          attributes: ['id', 'name'],
+          through: { attributes: [] }, // Exclude the join table attributes
+        },
+        {
+          model: ServiceDetails,
+          attributes: ['fullDescription', 'highlights', 'whatsIncluded', 'whatsNotIncluded', 'recommendations', 'coachInfo'],
+        },
+        {
+          model: SubCategory,
+          attributes: ['id', 'name'],
+          include: [
+            {
+              model: Category,
+              attributes: ['id', 'name'],
+            },
+          ],
+        },
+      ],
+    });
+
+    // Format the response
+    const result = services.map(service => ({
+      id: service.id,
+      name: service.name,
+      description: service.description,
+      image: service.image,
+      duration: service.duration,
+      hourlyRate: service.hourlyRate,
+      level: service.level,
+      subCategoryId: service.SubCategory.id,
+      subCategoryName: service.SubCategory.name,
+      categoryId: service.SubCategory.Category.id,
+      categoryName: service.SubCategory.Category.name,
+      trainers: service.Trainers.map(trainer => ({
+        id: trainer.id,
+        name: trainer.name,
+      })),
+      details: service.ServiceDetails
+    }));
+
+    res.status(200).json(result);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};

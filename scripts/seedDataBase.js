@@ -1,4 +1,3 @@
-// seedDatabase.js
 const { Sequelize, DataTypes } = require('sequelize');
 const sequelize = require('../config/sequelize'); // Adjust the path as necessary
 const { faker } = require('@faker-js/faker'); // Ensure this is the correct import
@@ -8,6 +7,8 @@ const { Service, ServiceTrainer } = require('../models/Services/Service'); // Ad
 const ServiceDetails = require('../models/Services/ServiceDetails'); // Add this import
 const Trainer = require('../models/Trainer/Trainer'); // Adjust the path as necessary
 const Booking = require('../models/Bookings/Booking'); // Add this import
+const Review = require('../models/Trainer/Review'); // Add this import
+const User = require('../models/User'); // Add this import if you have a User model
 
 // Define service names for different subcategories
 const serviceNames = {
@@ -38,6 +39,7 @@ const emptyDatabase = async () => {
     await SubCategory.destroy({ where: {}, truncate: true });
     await Category.destroy({ where: {}, truncate: true });
     await Booking.destroy({ where: {}, truncate: true }); // This empties only the bookings table
+    await Review.destroy({ where: {}, truncate: true }); // Add this to empty the reviews table
     await sequelize.query('SET FOREIGN_KEY_CHECKS = 1', { raw: true });
     console.log('Relevant tables emptied successfully (users table untouched).');
 };
@@ -91,6 +93,7 @@ const createSampleTrainers = async () => {
             const subCategory = faker.helpers.arrayElement(subCategories);
             let specialization;
 
+            // Ensure specialization is always assigned based on the subcategory
             switch (subCategory.name) {
                 case 'Tennis':
                     specialization = faker.helpers.arrayElement(['Serve Techniques', 'Footwork Drills', 'Match Strategy']);
@@ -123,30 +126,34 @@ const createSampleTrainers = async () => {
                     specialization = faker.helpers.arrayElement(['Dog Walking', 'Pet Grooming']);
                     break;
                 default:
-                    specialization = 'General Service';
+                    specialization = 'General Service'; // Fallback specialization if no subcategory matches
                     break;
             }
 
+            // Create the trainer with new fields for skills, yearsOfExperience, and certification
             await Trainer.create({
                 name: faker.person.firstName(),
                 surname: faker.person.lastName(),
                 description: faker.lorem.paragraph(),
                 avatar: faker.image.avatar(),
                 userRating: faker.number.int({ min: 1, max: 5 }),
-                specialization,
+                specialization, // Now guaranteed to have a value
                 level: faker.helpers.arrayElement(['Beginner', 'Advanced', 'Pro']),
                 hourlyRate: parseFloat(faker.commerce.price({ min: 30, max: 150, dec: 2 })),
                 categoryId: subCategory.categoryId,
                 subcategoryId: subCategory.id,
-                image: faker.image.url(640, 480, 'people', true, true)
+                image: faker.image.url(640, 480, 'people', true, true),
+                yearsOfExperience: faker.number.int({ min: 1, max: 25 }), // Random experience between 1 and 25 years
+                certification: faker.helpers.arrayElement([
+                    'Certified Professional Trainer', 
+                    'First Aid Certified', 
+                    'Advanced Coaching Techniques Certificate'
+                ]), // Random certification
+                skills: ['Mastering groundstrokes', 'Controlling the court', 'Mastering the serve'], // Example skills
             });
         }
 
         console.log('Sample trainers created successfully!');
-
-        // Verify trainers creation
-        const trainerCount = await Trainer.count();
-        console.log(`Total trainers created: ${trainerCount}`);
 
     } catch (error) {
         console.error('Error creating sample trainers:', error);
@@ -172,13 +179,10 @@ const createSampleServices = async () => {
             const subCategoryName = subCategory.name;
             const names = serviceNames[subCategoryName] || ['General Service'];
 
-            for (let i = 0; i < 10; i++) { // Create more services
+            for (let i = 0; i < 5; i++) { // Create 5 services per subcategory
                 const serviceName = faker.helpers.arrayElement(names);
-                const keyword = toKeyword(serviceName);
                 
-                // Use a random image for services
-                const randomImage = faker.image.url(640, 480, 'service', true, true);
-
+                // Create a service with random image and details
                 const service = await Service.create({
                     name: serviceName,
                     description: faker.lorem.sentences(3),
@@ -186,83 +190,35 @@ const createSampleServices = async () => {
                     level: faker.helpers.arrayElement(['Beginner', 'Advanced', 'Pro']),
                     subCategoryId: subCategory.id,
                     hourlyRate: parseFloat(faker.commerce.price({ min: 30, max: 150, dec: 2 })),
-                    image: randomImage
+                    image: faker.image.url(640, 480, 'service', true, true)
                 });
 
-                // Create associated service details based on the screenshots
-                if (subCategory.name === 'Tennis') {
-                    await ServiceDetails.create({
-                        serviceId: service.id,
-                        fullDescription: "Tennis Coaches provide training to students who wish to learn how to play tennis, improve their tennis skills, or compete in tennis tournaments. They coordinate individual and group tennis lessons, develop training programs based on students' tennis skills, and evaluate students’ performance.",
-                        highlights: [
-                            "Accelerating Your Improvement, Coaches will find flaws in your game and help you fix them quicker than you could by yourself.",
-                            "Proper technique, learning proper form is crucial for both effective and injury-free play.",
-                            "Formulating the right game plan before tennis matches can make a huge difference in the outcome of your match.",
-                            "One of the main roles of a tennis coach is to be a mentor. Coaches will teach you what you need to do to succeed, get you on the right mental path to success, and keep you motivated to train hard to reach your goals.",
-                            "Increase confidence, boost self-assurance, making you more comfortable and competitive during matches."
-                        ],
-                        whatsIncluded: [
-                            "Introduction",
-                            "Footwork and movement drills",
-                            "Practice drills",
-                            "Warm-up exercises"
-                        ],
-                        whatsNotIncluded: [
-                            "Tennis racket",
-                            "Court fee"
-                        ],
-                        recommendations: [
-                            "Accompanied by a parent"
-                        ],
-                        whatsToBring: [
-                            "Tennis Rackets and tennis balls",
-                            "Comfortable sneakers",
-                            "Towel, water bottle",
-                            "Sunscreen (optional)",
-                            "Hat (optional)"
-                        ],
-                        coachInfo: "Coach John Doe is a professional tennis instructor with over 15 years of experience in training both beginners and advanced players."
-                    });
-                } else {
-                    // For other services, use faker-generated service details
-                    await ServiceDetails.create({
-                        serviceId: service.id,
-                        fullDescription: faker.lorem.paragraphs(2),
-                        highlights: faker.lorem.sentences(2),
-                        whatsIncluded: faker.lorem.sentences(2),
-                        whatsNotIncluded: faker.lorem.sentence(),
-                        recommendations: faker.lorem.sentences(2),
-                        whatsToBring: faker.lorem.sentence(),
-                        coachInfo: faker.lorem.sentence()
-                    });
-                }
+                // Add service details
+                await ServiceDetails.create({
+                    serviceId: service.id,
+                    fullDescription: faker.lorem.paragraphs(2),
+                    highlights: [faker.lorem.sentence(), faker.lorem.sentence()],
+                    whatsIncluded: [faker.lorem.word(), faker.lorem.word()],
+                    whatsNotIncluded: [faker.lorem.word()],
+                    recommendations: [faker.lorem.sentence()],
+                    whatsToBring: [faker.lorem.sentence()],
+                    coachInfo: faker.lorem.sentence(),
+                });
 
-                // Find trainers that match the category, subcategory, and level
-                const matchingTrainers = trainers.filter(trainer =>
-                    trainer.categoryId === subCategory.categoryId &&
-                    trainer.subcategoryId === subCategory.id &&
+                // Assign 2 to 3 trainers to each service
+                const matchingTrainers = trainers.filter(trainer => 
+                    trainer.subcategoryId === subCategory.id && 
                     trainer.level === service.level
                 );
 
-                // Assign more than one trainer to each service
-                const numberOfTrainers = Math.min(faker.number.int({ min: 2, max: 5 }), matchingTrainers.length); // Ensure at least 2 trainers
+                const numberOfTrainers = Math.min(faker.number.int({ min: 2, max: 3 }), matchingTrainers.length);
 
                 for (let j = 0; j < numberOfTrainers; j++) {
                     const trainer = matchingTrainers[j];
-
-                    const existingEntry = await ServiceTrainer.findOne({
-                        where: {
-                            serviceId: service.id,
-                            trainerId: trainer.id
-                        }
+                    await ServiceTrainer.create({
+                        serviceId: service.id,
+                        trainerId: trainer.id
                     });
-
-                    if (!existingEntry) {
-                        await ServiceTrainer.create({
-                            serviceId: service.id,
-                            trainerId: trainer.id
-                        });
-                    }
                 }
             }
         }
@@ -270,6 +226,39 @@ const createSampleServices = async () => {
         console.log('Sample services and service details created successfully!');
     } catch (error) {
         console.error('Error creating sample services and service details:', error);
+        throw error;
+    }
+};
+
+// Function to create sample reviews for each trainer
+const createSampleReviews = async () => {
+    try {
+        const trainers = await Trainer.findAll();
+        const users = await User.findAll();
+
+        if (trainers.length === 0 || users.length === 0) {
+            throw new Error('No trainers or users found in the database.');
+        }
+
+        for (const trainer of trainers) {
+            // Create 3 to 4 random reviews for each trainer
+            const numberOfReviews = faker.number.int({ min: 3, max: 4 });
+
+            for (let i = 0; i < numberOfReviews; i++) {
+                const user = faker.helpers.arrayElement(users);
+                
+                await Review.create({
+                    trainerId: trainer.id,
+                    userId: user.id,
+                    rating: faker.number.int({ min: 1, max: 5 }),
+                    comment: faker.lorem.sentence()
+                });
+            }
+        }
+
+        console.log('Sample reviews created successfully!');
+    } catch (error) {
+        console.error('Error creating sample reviews:', error);
         throw error;
     }
 };
@@ -290,6 +279,9 @@ const seedDatabase = async () => {
         
         console.log('Creating services and service details...');
         await createSampleServices();
+
+        console.log('Creating reviews...');
+        await createSampleReviews();
     } catch (error) {
         console.error('Error syncing database or creating sample data:', error);
     } finally {
