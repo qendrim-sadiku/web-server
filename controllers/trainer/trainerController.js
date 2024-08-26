@@ -310,8 +310,9 @@ function removeBookedSlots(availability, startTime, endTime) {
   });
 }
 
+// Get trainer availability
 exports.getTrainerAvailability = async (req, res) => {
-  const { id } = req.params;
+  const { id } = req.params; // Trainer ID
   const { date } = req.query; // Optional date from frontend
 
   // Default to today's date if no date is provided
@@ -324,10 +325,12 @@ exports.getTrainerAvailability = async (req, res) => {
   const tomorrowDate = tomorrow.toISOString().split('T')[0];
 
   try {
+    // Fetch the trainer along with their active bookings and associated booking dates
     const trainer = await Trainer.findByPk(id, {
       include: [
         {
           model: Booking,
+        
           include: [
             {
               model: BookingDate,
@@ -370,6 +373,15 @@ exports.getTrainerAvailability = async (req, res) => {
       });
     });
 
+    // Remove booked slots for the selected date
+    trainer.Bookings.forEach(booking => {
+      booking.BookingDates.forEach(bookingDate => {
+        if (bookingDate.date === selectedDate) {
+          availabilitySelectedDate = removeBookedSlots(availabilitySelectedDate, bookingDate.startTime, bookingDate.endTime);
+        }
+      });
+    });
+
     // Return the response with filtered availability
     res.status(200).json({
       availabilityToday,
@@ -380,6 +392,7 @@ exports.getTrainerAvailability = async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 };
+
 
 // Helper function to parse time (e.g., '08:30') into a comparable format (e.g., 830)
 function parseTime(time) {

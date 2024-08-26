@@ -13,7 +13,7 @@ const sequelize = require('../../config/sequelize');
 exports.createBooking = async (req, res) => {
   const transaction = await sequelize.transaction();
   try {
-    const { userId, serviceId, trainerId, address, participants, dates } = req.body;
+    const { userId, serviceId, trainerId, address, participants = [], dates } = req.body; // Default participants to empty array if not provided
 
     // Ensure dates array is not empty
     if (!dates || dates.length === 0) {
@@ -62,11 +62,11 @@ exports.createBooking = async (req, res) => {
       totalPrice
     }, { transaction });
 
-    // Add participants (if any)
-    if (participants && participants.length > 0) {
+    // Ensure participants are unique to the current booking
+    if (participants.length > 0) {
       const participantData = participants.map(participant => ({
         ...participant,
-        bookingId: booking.id
+        bookingId: booking.id // Associate participants with the current booking
       }));
       await Participant.bulkCreate(participantData, { transaction });
     }
@@ -75,7 +75,7 @@ exports.createBooking = async (req, res) => {
     if (validDates.length > 0) {
       const dateData = validDates.map(date => ({
         ...date,
-        bookingId: booking.id
+        bookingId: booking.id // Associate dates with the current booking
       }));
       await BookingDate.bulkCreate(dateData, { transaction });
     }
@@ -87,6 +87,7 @@ exports.createBooking = async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 };
+
 
 
 
