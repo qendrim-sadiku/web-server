@@ -1,14 +1,16 @@
 const { Sequelize, DataTypes } = require('sequelize');
-const sequelize = require('../config/sequelize'); // Adjust the path as necessary
-const { faker } = require('@faker-js/faker'); // Ensure this is the correct import
-const Category = require('../models/Category/Category'); // Adjust the path as necessary
-const SubCategory = require('../models/Category/SubCategory'); // Adjust the path as necessary
-const { Service, ServiceTrainer } = require('../models/Services/Service'); // Adjust the path as necessary
-const ServiceDetails = require('../models/Services/ServiceDetails'); // Add this import
-const Trainer = require('../models/Trainer/Trainer'); // Adjust the path as necessary
-const Booking = require('../models/Bookings/Booking'); // Add this import
-const Review = require('../models/Trainer/Review'); // Add this import
-const User = require('../models/User'); // Add this import if you have a User model
+const sequelize = require('../config/sequelize');
+const { faker } = require('@faker-js/faker');
+const bcrypt = require('bcrypt');
+const Category = require('../models/Category/Category');
+const SubCategory = require('../models/Category/SubCategory');
+const { Service, ServiceTrainer } = require('../models/Services/Service');
+const ServiceDetails = require('../models/Services/ServiceDetails');
+const Trainer = require('../models/Trainer/Trainer');
+const Booking = require('../models/Bookings/Booking');
+const Review = require('../models/Trainer/Review');
+const User = require('../models/User');
+const ServiceType = require('../models/Services/ServiceType'); // Added ServiceType model
 
 // Define service names for different subcategories
 const serviceNames = {
@@ -26,9 +28,6 @@ const serviceNames = {
     'Pet care': ['Dog Walking', 'Pet Sitting', 'Pet Grooming', 'Behavioral Training']
 };
 
-// Function to create a URL-friendly keyword string
-const toKeyword = (title) => title.toLowerCase().split(' ').join('+');
-
 // Function to empty only the necessary tables, excluding users and keeping bookings table intact
 const emptyDatabase = async () => {
     await sequelize.query('SET FOREIGN_KEY_CHECKS = 0', { raw: true });
@@ -38,8 +37,8 @@ const emptyDatabase = async () => {
     await Service.destroy({ where: {}, truncate: true });
     await SubCategory.destroy({ where: {}, truncate: true });
     await Category.destroy({ where: {}, truncate: true });
-    await Booking.destroy({ where: {}, truncate: true }); // This empties only the bookings table
-    await Review.destroy({ where: {}, truncate: true }); // Add this to empty the reviews table
+    await Booking.destroy({ where: {}, truncate: true });
+    await Review.destroy({ where: {}, truncate: true });
     await sequelize.query('SET FOREIGN_KEY_CHECKS = 1', { raw: true });
     console.log('Relevant tables emptied successfully (users table untouched).');
 };
@@ -75,11 +74,74 @@ const createCategoriesAndSubCategories = async () => {
         console.log('Categories and subcategories have been populated successfully.');
     } catch (error) {
         console.error('Unable to create categories and subcategories:', error);
-        throw error; // Rethrow to stop execution
+        throw error;
     }
 };
 
-// Function to create sample trainers
+
+
+// Function to create sample users with default password
+const createSampleUsers = async () => {
+    try {
+        const defaultPassword = 'Pa$w0rd!'; // Default password
+        const hashedPassword = bcrypt.hashSync(defaultPassword, 10); // Hash the default password
+
+        for (let i = 0; i < 10; i++) { // Create 10 users
+            let username = faker.internet.userName();
+            // Ensure the username is between 3 and 20 characters
+            if (username.length > 20) {
+                username = username.substring(0, 20); // Trim the username if it's too long
+            } else if (username.length < 3) {
+                username = username.padEnd(3, '0'); // Pad with zeros if it's too short
+            }
+
+            await User.create({
+                name: faker.person.firstName(),
+                surname: faker.person.lastName(),
+                username: username, // Use the constrained username
+                email: faker.internet.email(),
+                password: hashedPassword, // Use the hashed default password
+                role: 'user'
+            });
+        }
+
+        console.log('Sample users created successfully with default password!');
+    } catch (error) {
+        console.error('Error creating sample users:', error);
+        throw error;
+    }
+};
+
+// Ensure a default trainer is available in the database
+const ensureDefaultTrainer = async () => {
+    let defaultTrainer = await Trainer.findOne({ where: { name: 'John Doe' } });
+
+    if (!defaultTrainer) {
+        console.log('Default trainer not found. Creating a new default trainer...');
+        
+        defaultTrainer = await Trainer.create({
+            name: 'John',
+            surname: 'Doe',
+            description: faker.lorem.paragraph(),
+            avatar: faker.image.avatar(),
+            userRating: 5,
+            specialization: 'General',
+            level: 'Pro',
+            hourlyRate: 100,
+            categoryId: 1,
+            subcategoryId: 1,
+            yearsOfExperience: 10,
+            certification: 'Certified Professional Trainer',
+            skills: ['Basic Skills'],
+        });
+
+        console.log('Default trainer created successfully.');
+    }
+
+    return defaultTrainer;
+};
+
+// Create sample trainers
 const createSampleTrainers = async () => {
     try {
         const categories = await Category.findAll();
@@ -89,11 +151,10 @@ const createSampleTrainers = async () => {
             throw new Error('No categories or subcategories found in the database.');
         }
 
-        for (let i = 0; i < 100; i++) { // Create more trainers
+        for (let i = 0; i < 100; i++) {
             const subCategory = faker.helpers.arrayElement(subCategories);
             let specialization;
 
-            // Ensure specialization is always assigned based on the subcategory
             switch (subCategory.name) {
                 case 'Tennis':
                     specialization = faker.helpers.arrayElement(['Serve Techniques', 'Footwork Drills', 'Match Strategy']);
@@ -126,30 +187,28 @@ const createSampleTrainers = async () => {
                     specialization = faker.helpers.arrayElement(['Dog Walking', 'Pet Grooming']);
                     break;
                 default:
-                    specialization = 'General Service'; // Fallback specialization if no subcategory matches
+                    specialization = 'General Service';
                     break;
             }
 
-            // Create the trainer with new fields for skills, yearsOfExperience, and certification
             await Trainer.create({
                 name: faker.person.firstName(),
                 surname: faker.person.lastName(),
                 description: faker.lorem.paragraph(),
                 avatar: faker.image.avatar(),
                 userRating: faker.number.int({ min: 1, max: 5 }),
-                specialization, // Now guaranteed to have a value
+                specialization,
                 level: faker.helpers.arrayElement(['Beginner', 'Advanced', 'Pro']),
                 hourlyRate: parseFloat(faker.commerce.price({ min: 30, max: 150, dec: 2 })),
                 categoryId: subCategory.categoryId,
                 subcategoryId: subCategory.id,
-                image: faker.image.url(640, 480, 'people', true, true),
-                yearsOfExperience: faker.number.int({ min: 1, max: 25 }), // Random experience between 1 and 25 years
+                yearsOfExperience: faker.number.int({ min: 1, max: 25 }),
                 certification: faker.helpers.arrayElement([
                     'Certified Professional Trainer', 
                     'First Aid Certified', 
                     'Advanced Coaching Techniques Certificate'
-                ]), // Random certification
-                skills: ['Mastering groundstrokes', 'Controlling the court', 'Mastering the serve'], // Example skills
+                ]),
+                skills: ['Mastering groundstrokes', 'Controlling the court', 'Mastering the serve'],
             });
         }
 
@@ -157,15 +216,16 @@ const createSampleTrainers = async () => {
 
     } catch (error) {
         console.error('Error creating sample trainers:', error);
-        throw error; // Rethrow to stop execution
+        throw error;
     }
 };
 
-// Function to create sample services with random images and service details
+// Create sample services and assign default trainers
 const createSampleServices = async () => {
     try {
         const subCategories = await SubCategory.findAll();
         const trainers = await Trainer.findAll();
+        const serviceTypes = await ServiceType.findAll(); // Fetch service types
 
         if (subCategories.length === 0) {
             throw new Error('No subcategories found in the database.');
@@ -175,25 +235,32 @@ const createSampleServices = async () => {
             throw new Error('No trainers found in the database.');
         }
 
+        if (serviceTypes.length === 0) {
+            throw new Error('No service types found in the database.');
+        }
+
+        const defaultTrainer = await ensureDefaultTrainer();
+
         for (const subCategory of subCategories) {
             const subCategoryName = subCategory.name;
             const names = serviceNames[subCategoryName] || ['General Service'];
 
-            for (let i = 0; i < 5; i++) { // Create 5 services per subcategory
+            for (let i = 0; i < 5; i++) {
                 const serviceName = faker.helpers.arrayElement(names);
-                
-                // Create a service with random image and details
+                const serviceType = faker.helpers.arrayElement(serviceTypes); // Randomly assign a service type
+
                 const service = await Service.create({
                     name: serviceName,
                     description: faker.lorem.sentences(3),
-                    duration: 60, // Set duration to 1 hour (60 minutes)
+                    duration: 60,
                     level: faker.helpers.arrayElement(['Beginner', 'Advanced', 'Pro']),
                     subCategoryId: subCategory.id,
-                    hourlyRate: parseFloat(faker.commerce.price({ min: 30, max: 150, dec: 2 })),
-                    image: faker.image.url(640, 480, 'service', true, true)
+                    hourlyRate: serviceType.pricePerHour, // Use the price per hour from the service type
+                    image: faker.image.url(640, 480, 'service', true, true),
+                    defaultTrainerId: defaultTrainer.id,
+                    serviceTypeId: serviceType.id // Assign service type
                 });
 
-                // Add service details
                 await ServiceDetails.create({
                     serviceId: service.id,
                     fullDescription: faker.lorem.paragraphs(2),
@@ -205,9 +272,13 @@ const createSampleServices = async () => {
                     coachInfo: faker.lorem.sentence(),
                 });
 
-                // Assign 2 to 3 trainers to each service
-                const matchingTrainers = trainers.filter(trainer => 
-                    trainer.subcategoryId === subCategory.id && 
+                await ServiceTrainer.create({
+                    serviceId: service.id,
+                    trainerId: defaultTrainer.id
+                });
+
+                const matchingTrainers = trainers.filter(trainer =>
+                    trainer.subcategoryId === subCategory.id &&
                     trainer.level === service.level
                 );
 
@@ -215,21 +286,22 @@ const createSampleServices = async () => {
 
                 for (let j = 0; j < numberOfTrainers; j++) {
                     const trainer = matchingTrainers[j];
-                    await ServiceTrainer.create({
-                        serviceId: service.id,
-                        trainerId: trainer.id
-                    });
+                    if (trainer.id !== defaultTrainer.id) {
+                        await ServiceTrainer.create({
+                            serviceId: service.id,
+                            trainerId: trainer.id
+                        });
+                    }
                 }
             }
         }
 
-        console.log('Sample services and service details created successfully!');
+        console.log('Sample services and default trainers created successfully!');
     } catch (error) {
         console.error('Error creating sample services and service details:', error);
         throw error;
     }
 };
-
 // Function to create sample reviews for each trainer
 const createSampleReviews = async () => {
     try {
@@ -241,7 +313,6 @@ const createSampleReviews = async () => {
         }
 
         for (const trainer of trainers) {
-            // Create 3 to 4 random reviews for each trainer
             const numberOfReviews = faker.number.int({ min: 3, max: 4 });
 
             for (let i = 0; i < numberOfReviews; i++) {
@@ -263,20 +334,64 @@ const createSampleReviews = async () => {
     }
 };
 
+const createServiceTypes = async () => {
+    try {
+        const serviceTypesData = [
+            {
+                name: 'Basic',
+                pricePerHour: 50,
+                picture: faker.image.imageUrl(640, 480, 'service', true) // Generate a random image
+            },
+            {
+                name: 'Pro',
+                pricePerHour: 70,
+                picture: faker.image.imageUrl(640, 480, 'service', true) // Generate a random image
+            },
+            {
+                name: 'Expert',
+                pricePerHour: 100,
+                picture: faker.image.imageUrl(640, 480, 'service', true) // Generate a random image
+            },
+            {
+                name: 'Enterprise',
+                pricePerHour: 130,
+                picture: faker.image.imageUrl(640, 480, 'service', true) // Generate a random image
+            }
+        ];
+
+        await ServiceType.bulkCreate(serviceTypesData, { ignoreDuplicates: true });
+
+        console.log('Service types with pictures created successfully!');
+    } catch (error) {
+        console.error('Error creating service types:', error);
+        throw error;
+    }
+};
+
 // Run all functions to seed the database
 const seedDatabase = async () => {
     try {
-        await sequelize.sync(); // Ensure all tables are created if they don't exist
+        await sequelize.sync();
 
         console.log('Emptying relevant tables...');
         await emptyDatabase();
 
+          // Creating service types with prices
+          console.log('Creating service types...');
+          await createServiceTypes(); // Create service types with hourly rates
+
         console.log('Creating categories and subcategories...');
         await createCategoriesAndSubCategories();
+
+        console.log('Creating service types...');
+        await createServiceTypes(); // Create service types
         
+        console.log('Creating users...');
+        await createSampleUsers(); // Re-added this function
+
         console.log('Creating trainers...');
         await createSampleTrainers();
-        
+
         console.log('Creating services and service details...');
         await createSampleServices();
 

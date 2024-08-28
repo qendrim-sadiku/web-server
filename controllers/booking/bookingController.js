@@ -10,14 +10,102 @@ const Category = require('../../models/Category/Category');
 const sequelize = require('../../config/sequelize');
 
 
+// exports.createBooking = async (req, res) => {
+//   const transaction = await sequelize.transaction();
+//   try {
+//     const { userId, serviceId, trainerId, address, participants = [], dates } = req.body; // Default participants to empty array if not provided
+
+//     // Ensure dates array is not empty
+//     if (!dates || dates.length === 0) {
+//       return res.status(400).json({ message: 'Booking dates are required' });
+//     }
+
+//     // Fetch the trainer to get the hourly rate
+//     const trainer = await Trainer.findByPk(trainerId);
+//     if (!trainer) {
+//       return res.status(404).json({ message: 'Trainer not found' });
+//     }
+
+//     let totalPrice = 0;
+//     const validDates = [];
+
+//     // Validate and calculate total price based on the number of hours booked and the trainer's hourly rate
+//     for (let date of dates) {
+//       const { date: datePart, startTime, endTime } = date;
+
+//       if (!datePart || !startTime || !endTime) {
+//         return res.status(400).json({ message: 'Date, start time, and end time are required for each booking date' });
+//       }
+
+//       const startDateTime = new Date(`${datePart}T${startTime}`);
+//       const endDateTime = new Date(`${datePart}T${endTime}`);
+
+//       if (isNaN(startDateTime.getTime()) || isNaN(endDateTime.getTime())) {
+//         return res.status(400).json({ message: 'Invalid date format for start time or end time' });
+//       }
+
+//       const hours = (endDateTime - startDateTime) / (1000 * 60 * 60);
+//       if (hours <= 0) {
+//         return res.status(400).json({ message: 'End time must be greater than start time' });
+//       }
+
+//       totalPrice += hours * trainer.hourlyRate;
+//       validDates.push({ date: datePart, startTime, endTime, bookingId: null });
+//     }
+
+//     // Create the booking
+//     const booking = await Booking.create({
+//       userId,
+//       serviceId,
+//       trainerId,
+//       address,
+//       totalPrice
+//     }, { transaction });
+
+//     // Ensure participants are unique to the current booking
+//     if (participants.length > 0) {
+//       const participantData = participants.map(participant => ({
+//         ...participant,
+//         bookingId: booking.id // Associate participants with the current booking
+//       }));
+//       await Participant.bulkCreate(participantData, { transaction });
+//     }
+
+//     // Add valid dates
+//     if (validDates.length > 0) {
+//       const dateData = validDates.map(date => ({
+//         ...date,
+//         bookingId: booking.id // Associate dates with the current booking
+//       }));
+//       await BookingDate.bulkCreate(dateData, { transaction });
+//     }
+
+//     await transaction.commit();
+//     res.status(201).json(booking);
+//   } catch (error) {
+//     await transaction.rollback();
+//     res.status(500).json({ error: error.message });
+//   }
+// };
+
 exports.createBooking = async (req, res) => {
   const transaction = await sequelize.transaction();
   try {
-    const { userId, serviceId, trainerId, address, participants = [], dates } = req.body; // Default participants to empty array if not provided
+    const { userId, serviceId, trainerId: providedTrainerId, address, participants = [], dates } = req.body; // Default participants to empty array if not provided
 
     // Ensure dates array is not empty
     if (!dates || dates.length === 0) {
       return res.status(400).json({ message: 'Booking dates are required' });
+    }
+
+    // Fetch the service to get the default trainer if trainerId is not provided
+    let trainerId = providedTrainerId;
+    if (!trainerId) {
+      const service = await Service.findByPk(serviceId);
+      if (!service || !service.defaultTrainerId) {
+        return res.status(400).json({ message: 'No trainer specified and no default trainer found for the service' });
+      }
+      trainerId = service.defaultTrainerId;
     }
 
     // Fetch the trainer to get the hourly rate
@@ -87,9 +175,6 @@ exports.createBooking = async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 };
-
-
-
 
   
 exports.getAllBookingsOfUser = async (req, res) => {
