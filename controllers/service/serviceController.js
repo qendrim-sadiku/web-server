@@ -4,6 +4,7 @@ const SubCategory = require('../../models/Category/SubCategory');
 const { Service, ServiceTrainer } = require('../../models/Services/Service');
 const Trainer = require('../../models/Trainer/Trainer');
 const ServiceDetails = require('../../models/Services/ServiceDetails');
+const ServiceType = require('../../models/Services/ServiceType');
 
 exports.createService = async (req, res) => {
   try {
@@ -214,18 +215,51 @@ exports.getServiceById = async (req, res) => {
 };
 
 // Get trainers for a specific service
+// exports.getTrainersForService = async (req, res) => {
+//   try {
+//     const service = await Service.findByPk(req.params.id, { include: Trainer });
+//     if (service) {
+//       res.status(200).json(service.Trainers);
+//     } else {
+//       res.status(404).json({ message: 'Service not found' });
+//     }
+//   } catch (error) {
+//     res.status(500).json({ error: error.message });
+//   }
+// };
+
 exports.getTrainersForService = async (req, res) => {
   try {
-    const service = await Service.findByPk(req.params.id, { include: Trainer });
-    if (service) {
-      res.status(200).json(service.Trainers);
-    } else {
-      res.status(404).json({ message: 'Service not found' });
+    const service = await Service.findByPk(req.params.id, {
+      include: Trainer,
+    });
+
+    if (!service) {
+      return res.status(404).json({ message: 'Service not found' });
     }
+
+    const { serviceTypeId, defaultTrainerId } = service;
+
+    let trainers = service.Trainers;
+
+    // Fetch the service type to determine if it's "Basic"
+    const serviceType = await ServiceType.findByPk(serviceTypeId);
+
+    if (!serviceType) {
+      return res.status(404).json({ message: 'Service type not found' });
+    }
+
+    // If the service type is not "Basic", filter out the default trainer
+    if (serviceType.name !== 'Basic') {
+      trainers = trainers.filter(trainer => trainer.id !== defaultTrainerId);
+    }
+
+    res.status(200).json(trainers);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 };
+
 
 // Get all services
 exports.getAllServices = async (req, res) => {
@@ -392,5 +426,94 @@ exports.getServicesByTrainer = async (req, res) => {
     res.status(200).json(result);
   } catch (error) {
     res.status(500).json({ error: error.message });
+  }
+};
+
+
+// Get multiple services by an array of IDs using a GET request
+exports.getMultipleServicesByIds = async (req, res) => {
+  try {
+    const { ids } = req.query; // Expecting service IDs as a query parameter (e.g., ?ids=1,2,3)
+
+    // Convert ids from a string to an array of numbers
+    const idsArray = ids ? ids.split(',').map(Number) : [];
+
+    console.log('Received IDs:', idsArray); // Log the parsed IDs
+
+    // Ensure that idsArray is not empty
+    if (!Array.isArray(idsArray) || idsArray.length === 0) {
+      return res.status(400).json({ error: 'No service IDs provided' });
+    }
+
+    // Fetch services that match the provided IDs
+    const services = await Service.findAll({
+      where: {
+        id: { [Op.in]: idsArray } // Sequelize's `Op.in` to match any of the given IDs
+      },
+      include: [
+        {
+          model: Trainer,
+          attributes: ['id', 'name'],
+        },
+        {
+          model: ServiceDetails,
+          attributes: ['fullDescription', 'highlights', 'whatsIncluded', 'whatsNotIncluded', 'recommendations', 'coachInfo'],
+        },
+        {
+          model: SubCategory,
+          attributes: ['id', 'name'],
+          include: [
+            {
+              model: Category,
+              attributes: ['id', 'name'],
+            },
+          ],
+        },
+      ],
+    });
+
+    console.log('Found Services:', services); // Log the services retrieved
+
+    // Check if any services were found
+    if (services.length === 0) {
+      return res.status(404).json({ error: 'No services found for the given IDs' });
+    }
+
+    // Format the response
+    const result = services.map(service => ({
+      id: service.id,
+      name: service.name,
+      description: service.description,
+      image: service.image,
+      duration: service.duration,
+      hourlyRate: service.hourlyRate,
+      level: service.level,
+      subCategoryId: service.SubCategory.id,
+      subCategoryName: service.SubCategory.name,
+      categoryId: service.SubCategory.Category.id,
+      categoryName: service.SubCategory.Category.name,
+      trainers: service.Trainers.map(trainer => ({
+        id: trainer.id,
+        name: trainer.name,
+      })),
+      details: service.ServiceDetails
+    }));
+
+    res.status(200).json(result);
+  } catch (error) {
+    console.error('Error fetching services:', error.message); // Log any errors
+    res.status(500).json({ error: error.message });
+  }
+};
+
+
+// Fetch all service types
+exports.getAllServiceTypes = async (req, res) => {
+  try {
+      const serviceTypes = await ServiceType.findAll();
+      res.status(200).json(serviceTypes);
+  } catch (error) {
+      console.error('Error fetching service types:', error);
+      res.status(500).json({ message: 'Failed to fetch service types' });
   }
 };
