@@ -1,193 +1,20 @@
-// const { Sequelize, DataTypes } = require('sequelize');
-// const sequelize = require('../config/sequelize'); // Adjust the path as necessary
-// const { faker } = require('@faker-js/faker'); // Ensure this is the correct import
-// const Category = require('../models/Category/Category'); // Adjust the path as necessary
-// const SubCategory = require('../models/Category/SubCategory'); // Adjust the path as necessary
-// const { Service, ServiceTrainer } = require('../models/Services/Service'); // Adjust the path as necessary
-// const Trainer = require('../models/Trainer/Trainer'); // Adjust the path as necessary
-
-// const serviceNames = {
-//     'Tennis Coach': ['Beginner Tennis Lessons', 'Advanced Serve Techniques', 'Tennis Footwork Drills', 'Doubles Strategy Training'],
-//     'Football': ['Youth Football Training', 'Advanced Goalkeeping', 'Tactical Play Sessions', 'Football Conditioning'],
-//     'Basketball': ['Beginner Throwing Techniques', 'Advanced Dribbling Skills', 'Basketball Defense Strategies', 'Shooting Accuracy Drills'],
-//     'Volleyball': ['Beginner Volleyball Drills', 'Advanced Spiking Techniques', 'Team Coordination Training', 'Volleyball Defense Skills'],
-//     'Painting': ['Intro to Watercolors', 'Advanced Oil Painting', 'Abstract Art Techniques', 'Portrait Painting'],
-//     'Contemporary': ['Modern Art Styles', 'Contemporary Sculpture', 'Mixed Media Art', 'Conceptual Art Techniques'],
-//     'Sculpture': ['Beginner Clay Modeling', 'Advanced Stone Carving', 'Metal Sculpture Techniques', 'Sculptural Installation'],
-//     'Abstract': ['Abstract Expressionism', 'Geometric Abstraction', 'Non-representational Art', 'Color Theory in Abstract Art'],
-//     'Shopper': ['Personal Shopping Assistant', 'Wardrobe Makeover', 'Gift Shopping Services', 'Home Décor Shopping'],
-//     'Handyman': ['General Home Repairs', 'Electrical Fixes', 'Plumbing Services', 'Furniture Assembly'],
-//     'Cleaning': ['Residential Cleaning', 'Office Cleaning', 'Deep Cleaning Services', 'Move-In/Move-Out Cleaning'],
-//     'Pet care': ['Dog Walking', 'Pet Sitting', 'Pet Grooming', 'Behavioral Training']
-// };
-
-// // Function to create a URL-friendly keyword string
-// const toKeyword = (title) => title.toLowerCase().split(' ').join('+');
-
-// // Function to create sample categories and subcategories
-// const createCategoriesAndSubCategories = async () => {
-//     try {
-//         const categoriesData = [
-//             { name: 'Sport' },
-//             { name: 'Art' },
-//             { name: 'Pro Services' }
-//         ];
-
-//         const categories = await Category.bulkCreate(categoriesData, { ignoreDuplicates: true });
-
-//         const subCategoriesData = [
-//             { name: 'Tennis Coach', categoryId: categories.find(cat => cat.name === 'Sport').id },
-//             { name: 'Football', categoryId: categories.find(cat => cat.name === 'Sport').id },
-//             { name: 'Basketball', categoryId: categories.find(cat => cat.name === 'Sport').id },
-//             { name: 'Volleyball', categoryId: categories.find(cat => cat.name === 'Sport').id },
-//             { name: 'Painting', categoryId: categories.find(cat => cat.name === 'Art').id },
-//             { name: 'Contemporary', categoryId: categories.find(cat => cat.name === 'Art').id },
-//             { name: 'Sculpture', categoryId: categories.find(cat => cat.name === 'Art').id },
-//             { name: 'Abstract', categoryId: categories.find(cat => cat.name === 'Art').id },
-//             { name: 'Shopper', categoryId: categories.find(cat => cat.name === 'Pro Services').id },
-//             { name: 'Handyman', categoryId: categories.find(cat => cat.name === 'Pro Services').id },
-//             { name: 'Cleaning', categoryId: categories.find(cat => cat.name === 'Pro Services').id },
-//             { name: 'Pet care', categoryId: categories.find(cat => cat.name === 'Pro Services').id }
-//         ];
-
-//         await SubCategory.bulkCreate(subCategoriesData, { ignoreDuplicates: true });
-
-//         console.log('Categories and subcategories have been populated successfully.');
-//     } catch (error) {
-//         console.error('Unable to create categories and subcategories:', error);
-//         throw error; // Rethrow to stop execution
-//     }
-// };
-
-// // Function to create sample trainers
-// const createSampleTrainers = async () => {
-//     try {
-//         const categories = await Category.findAll();
-//         const subCategories = await SubCategory.findAll();
-
-//         if (categories.length === 0 || subCategories.length === 0) {
-//             throw new Error('No categories or subcategories found in the database.');
-//         }
-
-//         for (let i = 0; i < 30; i++) {
-//             await Trainer.create({
-//                 name: faker.person.firstName(),
-//                 surname: faker.person.lastName(),
-//                 description: faker.lorem.paragraph(),
-//                 avatar: faker.image.avatar(),
-//                 userRating: faker.number.int({ min: 1, max: 5 }),
-//                 specialization: faker.helpers.arrayElement(['Strength Training', 'Cardio Fitness', 'Yoga', 'Pilates', 'Painting Techniques', 'Sculpture Methods', 'Abstract Art', 'Contemporary Art', 'Home Repairs', 'Cleaning Services', 'Pet Training', 'Personal Shopping']),
-//                 level: faker.helpers.arrayElement(['Beginner', 'Advanced', 'Pro']),
-//                 hourlyRate: parseFloat(faker.commerce.price({ min: 30, max: 150, dec: 2 })),
-//                 categoryId: categories[faker.number.int({ min: 0, max: categories.length - 1 })].id,
-//                 subcategoryId: subCategories[faker.number.int({ min: 0, max: subCategories.length - 1 })].id,
-//                 image: faker.image.url(640, 480, 'people', true, true)
-//             });
-//         }
-
-//         console.log('Sample trainers created successfully!');
-
-//         // Verify trainers creation
-//         const trainerCount = await Trainer.count();
-//         console.log(`Total trainers created: ${trainerCount}`);
-
-//     } catch (error) {
-//         console.error('Error creating sample trainers:', error);
-//         throw error; // Rethrow to stop execution
-//     }
-// };
-
-// // Function to create sample services
-// const createSampleServices = async () => {
-//     try {
-//         const subCategories = await SubCategory.findAll();
-//         const trainers = await Trainer.findAll();
-
-//         if (subCategories.length === 0) {
-//             console.error('No subcategories found in the database.');
-//             throw new Error('No subcategories found in the database.');
-//         }
-
-//         if (trainers.length === 0) {
-//             console.error('No trainers found in the database.');
-//             throw new Error('No trainers found in the database.');
-//         }
-
-//         console.log('Creating services with subcategories and trainers...');
-//         console.log(`Total subcategories: ${subCategories.length}`);
-//         console.log(`Total trainers: ${trainers.length}`);
-
-//         for (const subCategory of subCategories) {
-//             const subCategoryName = subCategory.name;
-//             const names = serviceNames[subCategoryName] || ['General Service'];
-
-//             for (let i = 0; i < 10; i++) {
-//                 const serviceName = faker.helpers.arrayElement(names);
-//                 const keyword = toKeyword(serviceName);
-//                 const service = await Service.create({
-//                     name: serviceName,
-//                     description: faker.lorem.sentences(3),
-//                     duration: faker.number.int({ min: 30, max: 120 }),
-//                     level: faker.helpers.arrayElement(['Beginner', 'Advanced', 'Pro']),
-//                     subCategoryId: subCategory.id,
-//                     hourlyRate: parseFloat(faker.commerce.price({ min: 30, max: 150, dec: 2 })),
-//                     image: `https://source.unsplash.com/featured/?${keyword}`
-//                 });
-
-//                 // Find trainers that match the category, subcategory, and level
-//                 const matchingTrainers = trainers.filter(trainer =>
-//                     trainer.categoryId === subCategory.categoryId &&
-//                     trainer.subcategoryId === subCategory.id &&
-//                     trainer.level === service.level
-//                 );
-
-//                 for (const trainer of matchingTrainers) {
-//                     await ServiceTrainer.create({
-//                         serviceId: service.id,
-//                         trainerId: trainer.id
-//                     });
-//                 }
-//             }
-//         }
-
-//         console.log('Sample services created successfully!');
-//     } catch (error) {
-//         console.error('Error creating sample services:', error);
-//         throw error; // Rethrow to stop execution
-//     }
-// };
-
-// // Run all functions to seed the database
-// const seedDatabase = async () => {
-//     try {
-//         await sequelize.sync();
-
-//         console.log('Creating categories and subcategories...');
-//         await createCategoriesAndSubCategories();
-        
-//         console.log('Creating trainers...');
-//         await createSampleTrainers();
-        
-//         console.log('Creating services...');
-//         await createSampleServices();
-//     } catch (error) {
-//         console.error('Error syncing database or creating sample data:', error);
-//     } finally {
-//         sequelize.close();
-//     }
-// };
-
-// seedDatabase();
 const { Sequelize, DataTypes } = require('sequelize');
-const sequelize = require('../config/sequelize'); // Adjust the path as necessary
-const { faker } = require('@faker-js/faker'); // Ensure this is the correct import
-const Category = require('../models/Category/Category'); // Adjust the path as necessary
-const SubCategory = require('../models/Category/SubCategory'); // Adjust the path as necessary
-const { Service, ServiceTrainer } = require('../models/Services/Service'); // Adjust the path as necessary
-const Trainer = require('../models/Trainer/Trainer'); // Adjust the path as necessary
+const sequelize = require('../config/sequelize');
+const { faker } = require('@faker-js/faker');
+const bcrypt = require('bcrypt');
+const Category = require('../models/Category/Category');
+const SubCategory = require('../models/Category/SubCategory');
+const { Service, ServiceTrainer } = require('../models/Services/Service');
+const ServiceDetails = require('../models/Services/ServiceDetails');
+const Trainer = require('../models/Trainer/Trainer');
+const Booking = require('../models/Bookings/Booking');
+const Review = require('../models/Trainer/Review');
+const User = require('../models/User');
+const ServiceType = require('../models/Services/ServiceType'); // Added ServiceType model
 
+// Define service names for different subcategories
 const serviceNames = {
-    'Tennis Coach': ['Beginner Tennis Lessons', 'Advanced Serve Techniques', 'Tennis Footwork Drills', 'Doubles Strategy Training'],
+    'Tennis': ['Beginner Tennis Lessons', 'Advanced Serve Techniques', 'Tennis Footwork Drills', 'Doubles Strategy Training'],
     'Football': ['Youth Football Training', 'Advanced Goalkeeping', 'Tactical Play Sessions', 'Football Conditioning'],
     'Basketball': ['Beginner Throwing Techniques', 'Advanced Dribbling Skills', 'Basketball Defense Strategies', 'Shooting Accuracy Drills'],
     'Volleyball': ['Beginner Volleyball Drills', 'Advanced Spiking Techniques', 'Team Coordination Training', 'Volleyball Defense Skills'],
@@ -201,19 +28,19 @@ const serviceNames = {
     'Pet care': ['Dog Walking', 'Pet Sitting', 'Pet Grooming', 'Behavioral Training']
 };
 
-// Function to create a URL-friendly keyword string
-const toKeyword = (title) => title.toLowerCase().split(' ').join('+');
-
-// Function to empty current data in the tables and skip foreign key constraints
+// Function to empty only the necessary tables, excluding users and keeping bookings table intact
 const emptyDatabase = async () => {
     await sequelize.query('SET FOREIGN_KEY_CHECKS = 0', { raw: true });
     await ServiceTrainer.destroy({ where: {}, truncate: true });
+    await ServiceDetails.destroy({ where: {}, truncate: true });
     await Trainer.destroy({ where: {}, truncate: true });
     await Service.destroy({ where: {}, truncate: true });
     await SubCategory.destroy({ where: {}, truncate: true });
     await Category.destroy({ where: {}, truncate: true });
+    await Booking.destroy({ where: {}, truncate: true });
+    await Review.destroy({ where: {}, truncate: true });
     await sequelize.query('SET FOREIGN_KEY_CHECKS = 1', { raw: true });
-    console.log('Database emptied successfully.');
+    console.log('Relevant tables emptied successfully (users table untouched).');
 };
 
 // Function to create sample categories and subcategories
@@ -228,7 +55,7 @@ const createCategoriesAndSubCategories = async () => {
         const categories = await Category.bulkCreate(categoriesData, { ignoreDuplicates: true });
 
         const subCategoriesData = [
-            { name: 'Tennis Coach', categoryId: categories.find(cat => cat.name === 'Sport').id },
+            { name: 'Tennis', categoryId: categories.find(cat => cat.name === 'Sport').id },
             { name: 'Football', categoryId: categories.find(cat => cat.name === 'Sport').id },
             { name: 'Basketball', categoryId: categories.find(cat => cat.name === 'Sport').id },
             { name: 'Volleyball', categoryId: categories.find(cat => cat.name === 'Sport').id },
@@ -247,11 +74,74 @@ const createCategoriesAndSubCategories = async () => {
         console.log('Categories and subcategories have been populated successfully.');
     } catch (error) {
         console.error('Unable to create categories and subcategories:', error);
-        throw error; // Rethrow to stop execution
+        throw error;
     }
 };
 
-// Function to create sample trainers
+
+
+// Function to create sample users with default password
+const createSampleUsers = async () => {
+    try {
+        const defaultPassword = 'Pa$w0rd!'; // Default password
+        const hashedPassword = bcrypt.hashSync(defaultPassword, 10); // Hash the default password
+
+        for (let i = 0; i < 10; i++) { // Create 10 users
+            let username = faker.internet.userName();
+            // Ensure the username is between 3 and 20 characters
+            if (username.length > 20) {
+                username = username.substring(0, 20); // Trim the username if it's too long
+            } else if (username.length < 3) {
+                username = username.padEnd(3, '0'); // Pad with zeros if it's too short
+            }
+
+            await User.create({
+                name: faker.person.firstName(),
+                surname: faker.person.lastName(),
+                username: username, // Use the constrained username
+                email: faker.internet.email(),
+                password: hashedPassword, // Use the hashed default password
+                role: 'user'
+            });
+        }
+
+        console.log('Sample users created successfully with default password!');
+    } catch (error) {
+        console.error('Error creating sample users:', error);
+        throw error;
+    }
+};
+
+// Ensure a default trainer is available in the database
+const ensureDefaultTrainer = async () => {
+    let defaultTrainer = await Trainer.findOne({ where: { name: 'John Doe' } });
+
+    if (!defaultTrainer) {
+        console.log('Default trainer not found. Creating a new default trainer...');
+        
+        defaultTrainer = await Trainer.create({
+            name: 'John',
+            surname: 'Doe',
+            description: faker.lorem.paragraph(),
+            avatar: faker.image.avatar(),
+            userRating: 5,
+            specialization: 'General',
+            level: 'Pro',
+            hourlyRate: 100,
+            categoryId: 1,
+            subcategoryId: 1,
+            yearsOfExperience: 10,
+            certification: 'Certified Professional Trainer',
+            skills: ['Basic Skills'],
+        });
+
+        console.log('Default trainer created successfully.');
+    }
+
+    return defaultTrainer;
+};
+
+// Create sample trainers
 const createSampleTrainers = async () => {
     try {
         const categories = await Category.findAll();
@@ -261,12 +151,12 @@ const createSampleTrainers = async () => {
             throw new Error('No categories or subcategories found in the database.');
         }
 
-        for (let i = 0; i < 100; i++) { // Create more trainers
+        for (let i = 0; i < 100; i++) {
             const subCategory = faker.helpers.arrayElement(subCategories);
             let specialization;
 
             switch (subCategory.name) {
-                case 'Tennis Coach':
+                case 'Tennis':
                     specialization = faker.helpers.arrayElement(['Serve Techniques', 'Footwork Drills', 'Match Strategy']);
                     break;
                 case 'Football':
@@ -312,80 +202,91 @@ const createSampleTrainers = async () => {
                 hourlyRate: parseFloat(faker.commerce.price({ min: 30, max: 150, dec: 2 })),
                 categoryId: subCategory.categoryId,
                 subcategoryId: subCategory.id,
-                image: faker.image.url(640, 480, 'people', true, true)
+                yearsOfExperience: faker.number.int({ min: 1, max: 25 }),
+                certification: faker.helpers.arrayElement([
+                    'Certified Professional Trainer', 
+                    'First Aid Certified', 
+                    'Advanced Coaching Techniques Certificate'
+                ]),
+                skills: ['Mastering groundstrokes', 'Controlling the court', 'Mastering the serve'],
             });
         }
 
         console.log('Sample trainers created successfully!');
 
-        // Verify trainers creation
-        const trainerCount = await Trainer.count();
-        console.log(`Total trainers created: ${trainerCount}`);
-
     } catch (error) {
         console.error('Error creating sample trainers:', error);
-        throw error; // Rethrow to stop execution
+        throw error;
     }
 };
 
-// Function to create sample services
+// Create sample services and assign default trainers
 const createSampleServices = async () => {
     try {
         const subCategories = await SubCategory.findAll();
         const trainers = await Trainer.findAll();
+        const serviceTypes = await ServiceType.findAll(); // Fetch service types
 
         if (subCategories.length === 0) {
-            console.error('No subcategories found in the database.');
             throw new Error('No subcategories found in the database.');
         }
 
         if (trainers.length === 0) {
-            console.error('No trainers found in the database.');
             throw new Error('No trainers found in the database.');
         }
 
-        console.log('Creating services with subcategories and trainers...');
-        console.log(`Total subcategories: ${subCategories.length}`);
-        console.log(`Total trainers: ${trainers.length}`);
+        if (serviceTypes.length === 0) {
+            throw new Error('No service types found in the database.');
+        }
+
+        const defaultTrainer = await ensureDefaultTrainer();
 
         for (const subCategory of subCategories) {
             const subCategoryName = subCategory.name;
             const names = serviceNames[subCategoryName] || ['General Service'];
 
-            for (let i = 0; i < 10; i++) { // Create more services
+            for (let i = 0; i < 5; i++) {
                 const serviceName = faker.helpers.arrayElement(names);
-                const keyword = toKeyword(serviceName);
+                const serviceType = faker.helpers.arrayElement(serviceTypes); // Randomly assign a service type
+
                 const service = await Service.create({
                     name: serviceName,
                     description: faker.lorem.sentences(3),
-                    duration: 60, // Set duration to 1 hour (60 minutes)
+                    duration: 60,
                     level: faker.helpers.arrayElement(['Beginner', 'Advanced', 'Pro']),
                     subCategoryId: subCategory.id,
-                    hourlyRate: parseFloat(faker.commerce.price({ min: 30, max: 150, dec: 2 })),
-                    image: `https://source.unsplash.com/featured/?${keyword}`
+                    hourlyRate: serviceType.pricePerHour, // Use the price per hour from the service type
+                    image: faker.image.url(640, 480, 'service', true, true),
+                    defaultTrainerId: defaultTrainer.id,
+                    serviceTypeId: serviceType.id // Assign service type
                 });
 
-                // Find trainers that match the category, subcategory, and level
+                await ServiceDetails.create({
+                    serviceId: service.id,
+                    fullDescription: faker.lorem.paragraphs(2),
+                    highlights: [faker.lorem.sentence(), faker.lorem.sentence()],
+                    whatsIncluded: [faker.lorem.word(), faker.lorem.word()],
+                    whatsNotIncluded: [faker.lorem.word()],
+                    recommendations: [faker.lorem.sentence()],
+                    whatsToBring: [faker.lorem.sentence()],
+                    coachInfo: faker.lorem.sentence(),
+                });
+
+                await ServiceTrainer.create({
+                    serviceId: service.id,
+                    trainerId: defaultTrainer.id
+                });
+
                 const matchingTrainers = trainers.filter(trainer =>
-                    trainer.categoryId === subCategory.categoryId &&
                     trainer.subcategoryId === subCategory.id &&
                     trainer.level === service.level
                 );
 
-                // Assign more than one trainer to each service
-                const numberOfTrainers = Math.min(faker.number.int({ min: 2, max: 5 }), matchingTrainers.length); // Ensure at least 2 trainers
+                const numberOfTrainers = Math.min(faker.number.int({ min: 2, max: 3 }), matchingTrainers.length);
 
                 for (let j = 0; j < numberOfTrainers; j++) {
                     const trainer = matchingTrainers[j];
-
-                    const existingEntry = await ServiceTrainer.findOne({
-                        where: {
-                            serviceId: service.id,
-                            trainerId: trainer.id
-                        }
-                    });
-
-                    if (!existingEntry) {
+                    if (trainer.id !== defaultTrainer.id) {
                         await ServiceTrainer.create({
                             serviceId: service.id,
                             trainerId: trainer.id
@@ -395,29 +296,107 @@ const createSampleServices = async () => {
             }
         }
 
-        console.log('Sample services created successfully!');
+        console.log('Sample services and default trainers created successfully!');
     } catch (error) {
-        console.error('Error creating sample services:', error);
-        throw error; // Rethrow to stop execution
+        console.error('Error creating sample services and service details:', error);
+        throw error;
+    }
+};
+// Function to create sample reviews for each trainer
+const createSampleReviews = async () => {
+    try {
+        const trainers = await Trainer.findAll();
+        const users = await User.findAll();
+
+        if (trainers.length === 0 || users.length === 0) {
+            throw new Error('No trainers or users found in the database.');
+        }
+
+        for (const trainer of trainers) {
+            const numberOfReviews = faker.number.int({ min: 3, max: 4 });
+
+            for (let i = 0; i < numberOfReviews; i++) {
+                const user = faker.helpers.arrayElement(users);
+                
+                await Review.create({
+                    trainerId: trainer.id,
+                    userId: user.id,
+                    rating: faker.number.int({ min: 1, max: 5 }),
+                    comment: faker.lorem.sentence()
+                });
+            }
+        }
+
+        console.log('Sample reviews created successfully!');
+    } catch (error) {
+        console.error('Error creating sample reviews:', error);
+        throw error;
+    }
+};
+
+const createServiceTypes = async () => {
+    try {
+        const serviceTypesData = [
+            {
+                name: 'Basic',
+                pricePerHour: 50,
+                picture: faker.image.imageUrl(640, 480, 'service', true) // Generate a random image
+            },
+            {
+                name: 'Pro',
+                pricePerHour: 70,
+                picture: faker.image.imageUrl(640, 480, 'service', true) // Generate a random image
+            },
+            {
+                name: 'Expert',
+                pricePerHour: 100,
+                picture: faker.image.imageUrl(640, 480, 'service', true) // Generate a random image
+            },
+            {
+                name: 'Enterprise',
+                pricePerHour: 130,
+                picture: faker.image.imageUrl(640, 480, 'service', true) // Generate a random image
+            }
+        ];
+
+        await ServiceType.bulkCreate(serviceTypesData, { ignoreDuplicates: true });
+
+        console.log('Service types with pictures created successfully!');
+    } catch (error) {
+        console.error('Error creating service types:', error);
+        throw error;
     }
 };
 
 // Run all functions to seed the database
 const seedDatabase = async () => {
     try {
-        await sequelize.sync(); // Ensure all tables are created if they don't exist
+        await sequelize.sync();
 
-        console.log('Emptying current database...');
+        console.log('Emptying relevant tables...');
         await emptyDatabase();
+
+          // Creating service types with prices
+          console.log('Creating service types...');
+          await createServiceTypes(); // Create service types with hourly rates
 
         console.log('Creating categories and subcategories...');
         await createCategoriesAndSubCategories();
+
+        console.log('Creating service types...');
+        await createServiceTypes(); // Create service types
         
+        console.log('Creating users...');
+        await createSampleUsers(); // Re-added this function
+
         console.log('Creating trainers...');
         await createSampleTrainers();
-        
-        console.log('Creating services...');
+
+        console.log('Creating services and service details...');
         await createSampleServices();
+
+        console.log('Creating reviews...');
+        await createSampleReviews();
     } catch (error) {
         console.error('Error syncing database or creating sample data:', error);
     } finally {
