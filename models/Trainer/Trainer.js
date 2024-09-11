@@ -58,6 +58,10 @@ const Trainer = sequelize.define('Trainer', {
     },
     allowNull: false
   },
+  gender: {
+    type: DataTypes.ENUM('Male', 'Female', 'Other'), // You can change to DataTypes.STRING if you don't want to use ENUM
+    allowNull: false
+  },
   // Handle skills as JSON
   skills: {
     type: DataTypes.TEXT, // Store as JSON string

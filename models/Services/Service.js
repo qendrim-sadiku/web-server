@@ -11,6 +11,10 @@ const Service = sequelize.define('Service', {
     autoIncrement: true,
     primaryKey: true
   },
+  type: {
+    type: DataTypes.STRING,
+    allowNull: false // or true based on your requirement
+  },
   name: {
     type: DataTypes.STRING,
     allowNull: false
