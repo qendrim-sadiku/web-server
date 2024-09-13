@@ -422,19 +422,22 @@ const ServiceType = require('../models/Services/ServiceType'); // Added ServiceT
 
 // Define service names for different subcategories
 const serviceNames = {
-    'Tennis': ['Beginner Tennis Lessons', 'Serve Techniques', 'Footwork Drills', 'Doubles Strategy Training'],
+    'Tennis': ['Serve Techniques', 'Footwork Drills', 'Doubles Strategy Training'],
     'Football': ['Youth Football Training', 'Advanced Goalkeeping', 'Tactical Play Sessions', 'Football Conditioning'],
-    'Basketball': ['Beginner Throwing Techniques', 'Advanced Dribbling Skills', 'Basketball Defense Strategies', 'Shooting Accuracy Drills'],
-    'Volleyball': ['Beginner Volleyball Drills', 'Advanced Spiking Techniques', 'Team Coordination Training', 'Volleyball Defense Skills'],
-    'Painting': ['Intro to Watercolors', 'Advanced Oil Painting', 'Abstract Art Techniques', 'Portrait Painting'],
+    'Basketball': ['Throwing Techniques', 'Dribbling Skills', 'Defense Strategies', 'Shooting Accuracy Drills'],
+    'Volleyball': ['Volleyball Drills', 'Spiking Techniques', 'Team Coordination Training', 'Defense Skills'],
+    'Painting': ['Intro to Watercolors', 'Oil Painting', 'Abstract Art Techniques', 'Portrait Painting'],
     'Contemporary': ['Modern Art Styles', 'Contemporary Sculpture', 'Mixed Media Art', 'Conceptual Art Techniques'],
-    'Sculpture': ['Beginner Clay Modeling', 'Advanced Stone Carving', 'Metal Sculpture Techniques', 'Sculptural Installation'],
+    'Sculpture': ['Clay Modeling', 'Stone Carving', 'Metal Sculpture Techniques', 'Sculptural Installation'],
     'Abstract': ['Abstract Expressionism', 'Geometric Abstraction', 'Non-representational Art', 'Color Theory in Abstract Art'],
     'Shopper': ['Personal Shopping Assistant', 'Wardrobe Makeover', 'Gift Shopping Services', 'Home Décor Shopping'],
-    'Handyman': ['General Home Repairs', 'Electrical Fixes', 'Plumbing Services', 'Furniture Assembly'],
+    'Handyman': ['Home Repairs', 'Electrical Fixes', 'Plumbing Services', 'Furniture Assembly'],
     'Cleaning': ['Residential Cleaning', 'Office Cleaning', 'Deep Cleaning Services', 'Move-In/Move-Out Cleaning'],
     'Pet care': ['Dog Walking', 'Pet Sitting', 'Pet Grooming', 'Behavioral Training']
 };
+
+// Define age groups for trainers
+const ageGroups = ['Adults', 'Teenagers', 'Children'];
 
 // Function to empty only the necessary tables, excluding users and keeping bookings table intact
 const emptyDatabase = async () => {
@@ -529,6 +532,7 @@ const ensureDefaultTrainer = async () => {
             name: 'John',
             surname: 'Doe',
             gender: 'Male', // Added gender here
+            ageGroup: 'Adults', // Added age group here
             description: faker.lorem.paragraph(),
             avatar: faker.image.avatar(),
             userRating: 5,
@@ -549,6 +553,7 @@ const ensureDefaultTrainer = async () => {
 };
 
 // Create sample trainers
+// Create sample trainers with years of experience distributed from 0-2 years to 16+ years
 const createSampleTrainers = async () => {
     try {
         const categories = await Category.findAll();
@@ -558,7 +563,19 @@ const createSampleTrainers = async () => {
             throw new Error('No categories or subcategories found in the database.');
         }
 
-        for (let i = 0; i < 100; i++) {
+        // Experience ranges (0-2, 3-5, 6-10, 11-15, 16+)
+        const experienceRanges = [
+            { min: 0, max: 2 },
+            { min: 3, max: 5 },
+            { min: 6, max: 10 },
+            { min: 11, max: 15 },
+            { min: 16, max: 25 } // 16+ group
+        ];
+
+        // Create at least 200 trainers spread across experience levels
+        const totalTrainers = 200;
+
+        for (let i = 0; i < totalTrainers; i++) {
             const subCategory = faker.helpers.arrayElement(subCategories);
             let specialization;
 
@@ -598,10 +615,16 @@ const createSampleTrainers = async () => {
                     break;
             }
 
+            // Randomly assign years of experience based on defined ranges
+            const experienceGroup = faker.helpers.arrayElement(experienceRanges);
+            const yearsOfExperience = faker.number.int({ min: experienceGroup.min, max: experienceGroup.max });
+
+            // Create a trainer
             await Trainer.create({
                 name: faker.person.firstName(),
                 surname: faker.person.lastName(),
                 gender: faker.helpers.arrayElement(['Male', 'Female']), // Added gender here
+                ageGroup: faker.helpers.arrayElement(ageGroups), // Assign random age group
                 description: faker.lorem.paragraph(),
                 avatar: faker.image.avatar(),
                 userRating: faker.number.int({ min: 1, max: 5 }),
@@ -610,7 +633,7 @@ const createSampleTrainers = async () => {
                 hourlyRate: parseFloat(faker.commerce.price({ min: 30, max: 150, dec: 2 })),
                 categoryId: subCategory.categoryId,
                 subcategoryId: subCategory.id,
-                yearsOfExperience: faker.number.int({ min: 1, max: 25 }),
+                yearsOfExperience, // Assign the generated years of experience
                 certification: faker.helpers.arrayElement([
                     'Certified Professional Trainer', 
                     'First Aid Certified', 
@@ -620,13 +643,14 @@ const createSampleTrainers = async () => {
             });
         }
 
-        console.log('Sample trainers created successfully!');
-
+        console.log('200+ trainers created successfully with different experience levels!');
     } catch (error) {
         console.error('Error creating sample trainers:', error);
         throw error;
     }
 };
+
+
 
 // Create sample services and assign default trainers
 const createSampleServices = async () => {
@@ -653,7 +677,7 @@ const createSampleServices = async () => {
             const subCategoryName = subCategory.name;
             const names = serviceNames[subCategoryName] || ['General Service'];
 
-            for (let i = 0; i < 5; i++) {
+            for (let i = 0; i < 30; i++) { // Create 30 services per subcategory
                 const serviceName = faker.helpers.arrayElement(names);
                 const serviceType = faker.helpers.arrayElement(serviceTypes); // Randomly assign a service type
                 const serviceTypeValue = faker.helpers.arrayElement(['Online', 'Meeting-Point', 'In-Person']); // Added type
@@ -682,26 +706,45 @@ const createSampleServices = async () => {
                     coachInfo: faker.lorem.sentence(),
                 });
 
-                await ServiceTrainer.create({
-                    serviceId: service.id,
-                    trainerId: defaultTrainer.id
-                });
-
-                const matchingTrainers = trainers.filter(trainer =>
+                // Filter matching trainers based on subcategory, level, gender, and years of experience
+                let matchingTrainers = trainers.filter(trainer =>
                     trainer.subcategoryId === subCategory.id &&
-                    trainer.level === service.level
+                    trainer.level === service.level &&
+                    trainer.yearsOfExperience >= 3 && // Example: filtering trainers with at least 3 years of experience
+                    ['Male', 'Female'].includes(trainer.gender) // Example: you can further customize this based on gender
                 );
 
-                const numberOfTrainers = Math.min(faker.number.int({ min: 2, max: 3 }), matchingTrainers.length);
-
-                for (let j = 0; j < numberOfTrainers; j++) {
-                    const trainer = matchingTrainers[j];
-                    if (trainer.id !== defaultTrainer.id) {
-                        await ServiceTrainer.create({
-                            serviceId: service.id,
-                            trainerId: trainer.id
+                // Ensure at least 10 trainers
+                const numberOfTrainersNeeded = 10 - matchingTrainers.length;
+                if (numberOfTrainersNeeded > 0) {
+                    // Create additional trainers if not enough available
+                    for (let j = 0; j < numberOfTrainersNeeded; j++) {
+                        const newTrainer = await Trainer.create({
+                            name: faker.person.firstName(),
+                            surname: faker.person.lastName(),
+                            gender: faker.helpers.arrayElement(['Male', 'Female']),
+                            ageGroup: faker.helpers.arrayElement(ageGroups),
+                            description: faker.lorem.paragraph(),
+                            avatar: faker.image.avatar(),
+                            userRating: faker.number.int({ min: 1, max: 5 }),
+                            specialization: faker.helpers.arrayElement(['Serve Techniques', 'Footwork Drills', 'Match Strategy']),
+                            level: service.level,
+                            hourlyRate: parseFloat(faker.commerce.price({ min: 30, max: 150, dec: 2 })),
+                            categoryId: subCategory.categoryId,
+                            subcategoryId: subCategory.id,
+                            yearsOfExperience: faker.number.int({ min: 1, max: 25 }),
+                            certification: faker.helpers.arrayElement(['Certified Professional Trainer', 'First Aid Certified', 'Advanced Coaching Techniques Certificate']),
+                            skills: ['Mastering groundstrokes', 'Controlling the court', 'Mastering the serve'],
                         });
+                        matchingTrainers.push(newTrainer);
                     }
+                }
+
+                for (const trainer of matchingTrainers.slice(0, 10)) {
+                    await ServiceTrainer.create({
+                        serviceId: service.id,
+                        trainerId: trainer.id
+                    });
                 }
             }
         }
@@ -712,6 +755,9 @@ const createSampleServices = async () => {
         throw error;
     }
 };
+
+
+
 // Function to create sample reviews for each trainer
 const createSampleReviews = async () => {
     try {
@@ -786,9 +832,9 @@ const seedDatabase = async () => {
         console.log('Emptying relevant tables...');
         await emptyDatabase();
 
-          // Creating service types with prices
-          console.log('Creating service types...');
-          await createServiceTypes(); // Create service types with hourly rates
+        // Creating service types with prices
+        console.log('Creating service types...');
+        await createServiceTypes(); // Create service types with hourly rates
 
         console.log('Creating categories and subcategories...');
         await createCategoriesAndSubCategories();
