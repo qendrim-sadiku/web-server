@@ -58,9 +58,12 @@ const Trainer = sequelize.define('Trainer', {
     },
     allowNull: false
   },
-  // Handle skills as JSON
+  gender: {
+    type: DataTypes.ENUM('Male', 'Female', 'Other'),
+    allowNull: false
+  },
   skills: {
-    type: DataTypes.TEXT, // Store as JSON string
+    type: DataTypes.TEXT,
     allowNull: true,
     get() {
       const skills = this.getDataValue('skills');
@@ -77,10 +80,15 @@ const Trainer = sequelize.define('Trainer', {
   certification: {
     type: DataTypes.STRING,
     allowNull: true
+  },
+  ageGroup: {
+    type: DataTypes.ENUM('Adults', 'Teenagers', 'Children'), // New age group field
+    allowNull: false
   }
 }, {
   timestamps: true
 });
+
 
 Category.hasMany(Trainer, { foreignKey: 'categoryId' });
 Trainer.belongsTo(Category, { foreignKey: 'categoryId' });
