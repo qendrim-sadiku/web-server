@@ -7,17 +7,29 @@ const User = require('../../models/User'); // Import the User model
 // Create a new trainer
 exports.createTrainer = async (req, res) => {
   try {
-    const trainer = await Trainer.create(req.body);
+    const trainer = await Trainer.create({
+      ...req.body,
+      ageGroup: req.body.ageGroup // Ensure ageGroup is included
+    });
     res.status(201).json(trainer);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 };
 
-// Get all trainers by category
+// Get all trainers by category with optional filtering by age group
 exports.getTrainersByCategory = async (req, res) => {
   try {
-    const trainers = await Trainer.findAll({ where: { categoryId: req.params.categoryId } });
+    const { categoryId } = req.params;
+    const { ageGroup } = req.query; // Optional age group filtering
+
+    const whereClause = { categoryId };
+
+    if (ageGroup) {
+      whereClause.ageGroup = ageGroup; // Filter by age group if provided
+    }
+
+    const trainers = await Trainer.findAll({ where: whereClause });
     res.status(200).json(trainers);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -38,7 +50,7 @@ exports.getTrainerById = async (req, res) => {
   }
 };
 
-// Get all trainers
+// Get all trainers with their reviews, total bookings, and average rating
 exports.getAllTrainers = async (req, res) => {
   try {
     const trainers = await Trainer.findAll({
@@ -64,6 +76,7 @@ exports.getAllTrainers = async (req, res) => {
         ...trainer.get({ plain: true }),
         averageRating,
         totalBookings: trainer.Bookings.length,
+        ageGroup: trainer.ageGroup // Include ageGroup in the response
       };
     });
 
@@ -73,16 +86,14 @@ exports.getAllTrainers = async (req, res) => {
   }
 };
 
-// Get trainer details
+// Get trainer details along with availability and reviews
 exports.getTrainerDetails = async (req, res) => {
   const { id } = req.params;
-  const { date } = req.query; // Date provided from frontend
+  const { date } = req.query;
 
-  // Default to today's date if no date is provided
   const today = new Date();
   const selectedDate = date ? date : today.toISOString().split('T')[0];
 
-  // Calculate tomorrow's date
   const tomorrow = new Date();
   tomorrow.setDate(today.getDate() + 1);
   const tomorrowDate = tomorrow.toISOString().split('T')[0];
@@ -110,31 +121,21 @@ exports.getTrainerDetails = async (req, res) => {
       return res.status(404).json({ message: 'Trainer not found' });
     }
 
-    // Calculate the average rating for the trainer
     const reviews = trainer.Reviews || [];
     const averageRating = reviews.length > 0
       ? reviews.reduce((sum, review) => sum + review.rating, 0) / reviews.length
       : 0;
 
-    // Calculate the total number of bookings
     const totalBookings = trainer.Bookings.length;
 
-    // Generate dynamic availability for today and tomorrow from 08:00 to 20:00
-    let availabilityToday = generateHourlySlots('08:00', '20:00'); // Availability for today
-    let availabilityTomorrow = generateHourlySlots('08:00', '20:00'); // Availability for tomorrow
+    let availabilityToday = generateHourlySlots('08:00', '20:00');
+    let availabilityTomorrow = generateHourlySlots('08:00', '20:00');
 
-    // Remove booked slots for today
     trainer.Bookings.forEach(booking => {
       booking.BookingDates.forEach(bookingDate => {
         if (bookingDate.date === selectedDate) {
           availabilityToday = removeBookedSlots(availabilityToday, bookingDate.startTime, bookingDate.endTime);
         }
-      });
-    });
-
-    // Remove booked slots for tomorrow
-    trainer.Bookings.forEach(booking => {
-      booking.BookingDates.forEach(bookingDate => {
         if (bookingDate.date === tomorrowDate) {
           availabilityTomorrow = removeBookedSlots(availabilityTomorrow, bookingDate.startTime, bookingDate.endTime);
         }
@@ -158,21 +159,18 @@ exports.getTrainerDetails = async (req, res) => {
 exports.addReview = async (req, res) => {
   const { trainerId } = req.params;
   const { rating, comment } = req.body;
-  const userId = req.user.id; // Assuming user ID is available through authentication middleware
+  const userId = req.user.id;
 
   try {
-    // Check if the trainer exists
     const trainer = await Trainer.findByPk(trainerId);
     if (!trainer) {
       return res.status(404).json({ message: 'Trainer not found' });
     }
 
-    // Validate rating (ensure it's within the expected range, e.g., 1-5)
     if (rating < 1 || rating > 5) {
       return res.status(400).json({ message: 'Rating must be between 1 and 5' });
     }
 
-    // Create the review
     const review = await Review.create({
       trainerId,
       userId,
@@ -188,31 +186,25 @@ exports.addReview = async (req, res) => {
 
 // Cancel a booking
 exports.cancelBooking = async (req, res) => {
-  const { id } = req.params; // Booking ID
+  const { id } = req.params;
 
   try {
-    // Find the booking by ID
     const booking = await Booking.findByPk(id, {
       include: [{
-        model: BookingDate, // Include BookingDate to handle time slots
+        model: BookingDate,
         attributes: ['date', 'startTime', 'endTime'],
       }]
     });
 
-    // If booking not found, return an error
     if (!booking) {
       return res.status(404).json({ message: 'Booking not found' });
     }
 
-    // Update the booking status to 'canceled'
     booking.status = 'canceled';
     await booking.save();
 
-    console.log('Booking status after cancelation:', booking.status); // For debugging
-
-    // Recalculate availability (Optional step, depending on how your system works)
-    const trainerId = booking.trainerId; // Assuming booking has trainerId
-    await recalculateTrainerAvailability(trainerId); // Custom function to recalculate availability (if needed)
+    const trainerId = booking.trainerId;
+    await recalculateTrainerAvailability(trainerId);
 
     res.status(200).json({ message: 'Booking canceled successfully' });
   } catch (error) {
@@ -220,7 +212,6 @@ exports.cancelBooking = async (req, res) => {
   }
 };
 
-// Example recalculateTrainerAvailability function to refresh availability
 const recalculateTrainerAvailability = async (trainerId) => {
   try {
     const trainer = await Trainer.findByPk(trainerId, {
@@ -230,7 +221,7 @@ const recalculateTrainerAvailability = async (trainerId) => {
           model: BookingDate,
           attributes: ['date', 'startTime', 'endTime'],
         }],
-        where: { status: 'active' }, // Only include active bookings
+        where: { status: 'active' },
       }],
     });
 
@@ -239,7 +230,6 @@ const recalculateTrainerAvailability = async (trainerId) => {
       return;
     }
 
-    // Logic to recalculate the availability based on the remaining active bookings
     let availabilityToday = generateHourlySlots('08:00', '20:00');
     let availabilityTomorrow = generateHourlySlots('08:00', '20:00');
     let availabilitySelectedDate = generateHourlySlots('08:00', '20:00');
@@ -267,7 +257,6 @@ exports.getTrainerBookingsCount = async (req, res) => {
   try {
     const trainerId = req.params.trainerId;
 
-    // Count bookings for the specific trainer
     const bookingCount = await Booking.count({
       where: { trainerId: trainerId }
     });
@@ -277,122 +266,6 @@ exports.getTrainerBookingsCount = async (req, res) => {
     res.status(500).json({ error: 'An error occurred while fetching the bookings count.' });
   }
 };
-
-function filterPastSlots(availability) {
-  const now = new Date();
-  const currentHour = now.getHours();  // Get the current hour
-  const currentMinutes = now.getMinutes();  // Get the current minutes
-
-  return availability.filter(slot => {
-    const [slotHour, slotMinutes] = slot.startTime.split(':').map(Number);
-
-    // Filter out slots that are in the past based on hours and minutes
-    if (slotHour > currentHour) {
-      return true; // Future hour
-    } else if (slotHour === currentHour && slotMinutes >= currentMinutes) {
-      return true; // Same hour but future minutes
-    }
-
-    return false; // Past slot
-  });
-}
-
-function removeBookedSlots(availability, startTime, endTime) {
-  return availability.filter(slot => {
-    const slotStartTime = parseTime(slot.startTime);
-    const slotEndTime = parseTime(slot.endTime);
-
-    const bookedStartTime = parseTime(startTime);
-    const bookedEndTime = parseTime(endTime);
-
-    // Keep slots that don't overlap with booked slots
-    return !(slotStartTime < bookedEndTime && slotEndTime > bookedStartTime);
-  });
-}
-
-// Get trainer availability
-exports.getTrainerAvailability = async (req, res) => {
-  const { id } = req.params; // Trainer ID
-  const { date } = req.query; // Optional date from frontend
-
-  // Default to today's date if no date is provided
-  const today = new Date();
-  const selectedDate = date ? date : today.toISOString().split('T')[0];
-
-  // Calculate tomorrow's date
-  const tomorrow = new Date();
-  tomorrow.setDate(today.getDate() + 1);
-  const tomorrowDate = tomorrow.toISOString().split('T')[0];
-
-  try {
-    // Fetch the trainer along with their active bookings and associated booking dates
-    const trainer = await Trainer.findByPk(id, {
-      include: [
-        {
-          model: Booking,
-        
-          include: [
-            {
-              model: BookingDate,
-              attributes: ['date', 'startTime', 'endTime'],
-            },
-          ],
-        },
-      ],
-    });
-
-    if (!trainer) {
-      return res.status(404).json({ message: 'Trainer not found' });
-    }
-
-    // Generate availability from 08:00 to 20:00 (8:00 AM to 8:00 PM)
-    let availabilityToday = generateHourlySlots('08:00', '20:00');
-    let availabilityTomorrow = generateHourlySlots('08:00', '20:00');
-    let availabilitySelectedDate = generateHourlySlots('08:00', '20:00');
-
-    // Filter out past slots for today's availability
-    if (selectedDate === today.toISOString().split('T')[0]) {
-      availabilityToday = filterPastSlots(availabilityToday); // Remove past slots
-    }
-
-    // Remove booked slots for today
-    trainer.Bookings.forEach(booking => {
-      booking.BookingDates.forEach(bookingDate => {
-        if (bookingDate.date === today.toISOString().split('T')[0]) {
-          availabilityToday = removeBookedSlots(availabilityToday, bookingDate.startTime, bookingDate.endTime);
-        }
-      });
-    });
-
-    // Remove booked slots for tomorrow
-    trainer.Bookings.forEach(booking => {
-      booking.BookingDates.forEach(bookingDate => {
-        if (bookingDate.date === tomorrowDate) {
-          availabilityTomorrow = removeBookedSlots(availabilityTomorrow, bookingDate.startTime, bookingDate.endTime);
-        }
-      });
-    });
-
-    // Remove booked slots for the selected date
-    trainer.Bookings.forEach(booking => {
-      booking.BookingDates.forEach(bookingDate => {
-        if (bookingDate.date === selectedDate) {
-          availabilitySelectedDate = removeBookedSlots(availabilitySelectedDate, bookingDate.startTime, bookingDate.endTime);
-        }
-      });
-    });
-
-    // Return the response with filtered availability
-    res.status(200).json({
-      availabilityToday,
-      availabilityTomorrow,
-      availabilitySelectedDate,
-    });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-};
-
 
 // Helper function to parse time (e.g., '08:30') into a comparable format (e.g., 830)
 function parseTime(time) {
@@ -421,8 +294,101 @@ function generateHourlySlots(startTime, endTime) {
       endTime: `${nextHours}:${nextMinutes}`
     });
 
-    currentTime += 100; // Move to the next hour
+    currentTime += 100;
   }
 
   return slots;
 }
+
+function removeBookedSlots(availability, startTime, endTime) {
+  return availability.filter(slot => {
+    const slotStartTime = parseTime(slot.startTime);
+    const slotEndTime = parseTime(slot.endTime);
+
+    const bookedStartTime = parseTime(startTime);
+    const bookedEndTime = parseTime(endTime);
+
+    return !(slotStartTime < bookedEndTime && slotEndTime > bookedStartTime);
+  });
+}
+
+function filterPastSlots(availability) {
+  const now = new Date();
+  const currentHour = now.getHours();
+  const currentMinutes = now.getMinutes();
+
+  return availability.filter(slot => {
+    const [slotHour, slotMinutes] = slot.startTime.split(':').map(Number);
+
+    if (slotHour > currentHour) {
+      return true;
+    } else if (slotHour === currentHour && slotMinutes >= currentMinutes) {
+      return true;
+    }
+
+    return false;
+  });
+}
+
+// Get trainer availability with date filtering
+exports.getTrainerAvailability = async (req, res) => {
+  const { id } = req.params;
+  const { date } = req.query;
+
+  const today = new Date();
+  const selectedDate = date ? date : today.toISOString().split('T')[0];
+ 
+  const tomorrow = new Date();
+  tomorrow.setDate(today.getDate() + 1);
+  const tomorrowDate = tomorrow.toISOString().split('T')[0];
+
+  try {
+    const trainer = await Trainer.findByPk(id, {
+      include: [
+        {
+          model: Booking,
+          include: [
+            {
+              model: BookingDate,
+              attributes: ['date', 'startTime', 'endTime'],
+            },
+          ],
+        },
+      ],
+    });
+
+    if (!trainer) {
+      return res.status(404).json({ message: 'Trainer not found' });
+    }
+
+    let availabilityToday = generateHourlySlots('08:00', '20:00');
+    let availabilityTomorrow = generateHourlySlots('08:00', '20:00');
+    let availabilitySelectedDate = generateHourlySlots('08:00', '20:00');
+
+    if (selectedDate === today.toISOString().split('T')[0]) {
+      availabilityToday = filterPastSlots(availabilityToday);
+    }
+
+    trainer.Bookings.forEach(booking => {
+      booking.BookingDates.forEach(bookingDate => {
+        if (bookingDate.date === today.toISOString().split('T')[0]) {
+          availabilityToday = removeBookedSlots(availabilityToday, bookingDate.startTime, bookingDate.endTime);
+        }
+        if (bookingDate.date === tomorrowDate) {
+          availabilityTomorrow = removeBookedSlots(availabilityTomorrow, bookingDate.startTime, bookingDate.endTime);
+        }
+        if (bookingDate.date === selectedDate) {
+          availabilitySelectedDate = removeBookedSlots(availabilitySelectedDate, bookingDate.startTime, bookingDate.endTime);
+        }
+      });
+    });
+
+    res.status(200).json({
+      availabilityToday,
+      availabilityTomorrow,
+      availabilitySelectedDate,
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
