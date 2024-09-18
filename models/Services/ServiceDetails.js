@@ -16,27 +16,31 @@ const ServiceDetails = sequelize.define('ServiceDetails', {
     allowNull: false,
   },
   highlights: {
-    type: DataTypes.JSON, // Store highlights as JSON
+    type: DataTypes.JSON,
     allowNull: true,
   },
   whatsIncluded: {
-    type: DataTypes.JSON, // Store what's included as JSON
+    type: DataTypes.JSON,
     allowNull: true,
   },
   whatsNotIncluded: {
-    type: DataTypes.JSON, // Store what's not included as JSON
+    type: DataTypes.JSON,
     allowNull: true,
   },
   recommendations: {
-    type: DataTypes.JSON, // Store recommendations as JSON
+    type: DataTypes.JSON,
     allowNull: true,
   },
   whatsToBring: {
-    type: DataTypes.JSON, // Store what to bring as JSON
+    type: DataTypes.JSON,
     allowNull: true,
   },
   coachInfo: {
     type: DataTypes.TEXT,
+    allowNull: true,
+  },
+  serviceImage: {
+    type: DataTypes.JSON, // Store images as an array of URLs or file paths
     allowNull: true,
   },
 }, {
