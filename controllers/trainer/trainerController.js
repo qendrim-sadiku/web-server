@@ -86,7 +86,7 @@ exports.getAllTrainers = async (req, res) => {
   }
 };
 
-// Get trainer details along with availability and reviews
+// Get trainer details along with availability, reviews, and last booked information
 exports.getTrainerDetails = async (req, res) => {
   const { id } = req.params;
   const { date } = req.query;
@@ -121,6 +121,18 @@ exports.getTrainerDetails = async (req, res) => {
       return res.status(404).json({ message: 'Trainer not found' });
     }
 
+    // Find the last booking by sorting booking dates in descending order
+    const lastBooking = await Booking.findOne({
+      where: { trainerId: id },
+      order: [['createdAt', 'DESC']], // Assuming `createdAt` stores the booking creation date
+      include: [
+        {
+          model: BookingDate,
+          attributes: ['date', 'startTime', 'endTime'],
+        },
+      ],
+    });
+
     const reviews = trainer.Reviews || [];
     const averageRating = reviews.length > 0
       ? reviews.reduce((sum, review) => sum + review.rating, 0) / reviews.length
@@ -148,7 +160,8 @@ exports.getTrainerDetails = async (req, res) => {
       totalBookings,
       reviews: trainer.Reviews,
       availabilityToday,
-      availabilityTomorrow
+      availabilityTomorrow,
+      lastBooking, // Include the last booking information
     });
   } catch (error) {
     res.status(500).json({ error: error.message });
