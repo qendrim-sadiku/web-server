@@ -45,7 +45,6 @@ exports.getAllUsers = async (req, res) => {
   }
 };
 
-// Update user profile (including all details)
 exports.updateProfile = async (req, res) => {
   const { userId, name, surname, userContactDetails, address, meetingPoints, userDetails, paymentInfo, currentPassword, newPassword } = req.body;
 
@@ -114,6 +113,14 @@ exports.updateProfile = async (req, res) => {
     // Ensure address contains country, city, and street
     if (address) {
       if (address.country && address.city && address.street) {
+        // Check if the new address is marked as default
+        if (address.defaultAddress) {
+          // Set all previous addresses for this user to `defaultAddress: false`
+          await Address.update(
+            { defaultAddress: false },
+            { where: { UserId: user.id } }
+          );
+        }
         await Address.upsert({ ...address, UserId: user.id });
       } else {
         return res.status(400).send({ message: 'Address must include country, city, and street' });
@@ -152,7 +159,7 @@ exports.getProfile = async (req, res) => {
       include: [
         {
           model: Address,
-          attributes: ['country', 'city', 'street', 'zipCode'] // Add all necessary attributes
+          attributes: ['country', 'city', 'street', 'zipCode', 'defaultAddress'] // Add all necessary attributes
         },
         {
           model: UserContactDetails,
@@ -183,7 +190,6 @@ exports.getProfile = async (req, res) => {
     res.status(500).send({ message: 'Error fetching profile', error });
   }
 };
-
 // Create new user
 exports.createUser = async (req, res) => {
   const { name,surname,username, email, password, role } = req.body;
@@ -275,26 +281,10 @@ exports.updatePassword = async (req, res) => {
   }
 };
 
-exports.updatePaymentInfo = async (req, res) => {
-  const { userId, paymentInfo } = req.body;
 
-  try {
-    if (!userId) {
-      return res.status(400).send({ message: 'User ID is required' });
-    }
 
-    let user = await User.findByPk(userId);
-    if (!user) {
-      return res.status(404).send({ message: 'User not found' });
-    }
 
-    await PaymentInfo.upsert({ ...paymentInfo, UserId: user.id });
-    res.status(200).send({ message: 'Payment info updated successfully' });
-  } catch (error) {
-    console.error('Error updating payment info:', error);
-    res.status(500).send({ message: 'Error updating payment info', error: error.message || error });
-  }
-};
+
 
 
 
@@ -394,6 +384,7 @@ exports.updateUserDetails = async (req, res) => {
   }
 };
 
+// Update meeting points
 exports.updateMeetingPoints = async (req, res) => {
   const { userId, meetingPoints } = req.body;
 
@@ -418,13 +409,17 @@ exports.updateMeetingPoints = async (req, res) => {
 };
 
 
-// controllers/userProfileController.js
-exports.updateAddress = async (req, res) => {
-  const { userId, address } = req.body;
+exports.updateAddresses = async (req, res) => {
+  const { userId, addresses, deletedAddresses } = req.body;
 
   try {
+    // Ensure userId and addresses array are provided
     if (!userId) {
       return res.status(400).send({ message: 'User ID is required' });
+    }
+
+    if (!addresses || !Array.isArray(addresses)) {
+      return res.status(400).send({ message: 'Addresses array is required' });
     }
 
     let user = await User.findByPk(userId);
@@ -432,24 +427,62 @@ exports.updateAddress = async (req, res) => {
       return res.status(404).send({ message: 'User not found' });
     }
 
-    if (!address.country || !address.city || !address.street) {
-      return res.status(400).send({ message: 'Address must include country, city, and street' });
+    // Process deletions first
+    if (deletedAddresses && Array.isArray(deletedAddresses) && deletedAddresses.length > 0) {
+      await Address.destroy({
+        where: {
+          id: deletedAddresses,
+          UserId: userId
+        }
+      });
     }
 
-    await Address.upsert({ ...address, UserId: user.id });
-    res.status(200).send({ message: 'Address updated successfully' });
+    // Check if any address is set as default
+    const defaultAddresses = addresses.filter(address => address.defaultAddress === true);
+
+    if (defaultAddresses.length > 1) {
+      return res.status(400).send({ message: 'Only one address can be set as default' });
+    }
+
+    // If there is a new default address, unset previous default
+    if (defaultAddresses.length === 1) {
+      const defaultAddress = defaultAddresses[0];
+      
+      // Set all existing addresses for the user to defaultAddress false
+      await Address.update(
+        { defaultAddress: false },
+        { where: { UserId: userId } }
+      );
+
+      // Mark the selected address as default
+      defaultAddress.defaultAddress = true;
+    }
+
+    // Iterate over each address and validate, then upsert each one
+    for (const address of addresses) {
+      if (!address.country || !address.city || !address.street) {
+        return res.status(400).send({ message: 'Each address must include country, city, and street' });
+      }
+
+      // Upsert the address (insert if new, or update if existing)
+      await Address.upsert({ ...address, UserId: user.id });
+    }
+
+    res.status(200).send({ message: 'Addresses updated successfully' });
   } catch (error) {
-    console.error('Error updating address:', error);
-    res.status(500).send({ message: 'Error updating address', error: error.message || error });
+    console.error('Error updating addresses:', error);
+    res.status(500).send({ message: 'Error updating addresses', error: error.message || error });
   }
 };
+
+
 
 
 // Get user profile
 exports.getUser = async (req, res) => {
   try {
     const user = await User.findByPk(req.params.userId, {
-      attributes: ['id', 'username', 'email', 'name', 'surname', 'password', 'role', 'createdAt', 'updatedAt'] // Add all necessary attributes
+      attributes: ['id', 'username', 'email', 'name', 'surname', 'password', 'role', 'createdAt', 'updatedAt', 'isProfileCompleted'] // Add isProfileCompleted
     });
 
     if (!user) {
@@ -462,25 +495,135 @@ exports.getUser = async (req, res) => {
   }
 };
 
-// Get user address
-exports.getUserAddress = async (req, res) => {
+// Update user's profile completion status
+exports.completeUserProfile = async (req, res) => {
   try {
-    const address = await Address.findOne({
-      where: { userId: req.params.userId },
-      attributes: ['country', 'city', 'street', 'zipCode'], // Add all necessary attributes
-      order: [['updatedAt', 'DESC']] // Order by the updated timestamp to get the latest address
-    });
+    // Find the user
+    const user = await User.findByPk(req.params.userId);
 
-    if (!address) {
-      return res.status(200).send({ message: 'No address available', data: {} });
+    if (!user) {
+      return res.status(404).send({ message: 'User not found' });
     }
 
-    res.status(200).send(address);
+    // Set isProfileCompleted to true when marking profile as completed
+    user.isProfileCompleted = true;
+    
+    // Save the user
+    await user.save();
+
+    // Send success response
+    return res.status(200).send({ message: 'Profile marked as completed' });
+
   } catch (error) {
-    console.error('Error fetching address:', error);
-    res.status(500).send({ message: 'Error fetching address', error });
+    console.error('Error marking profile as completed:', error);
+    return res.status(500).send({ message: 'Error marking profile as completed' });
   }
 };
+
+
+// Method to check if user profile is completed
+exports.checkProfileCompletion = async (req, res) => {
+  const { userId } = req.params;
+
+  try {
+    // Fetch the user along with necessary details
+    const user = await User.findByPk(userId, {
+      include: [
+        { model: UserContactDetails },
+        { model: Address },
+        { model: UserDetails },
+        { model: PaymentInfo }
+      ]
+    });
+
+    if (!user) {
+      return res.status(404).send({ message: 'User not found' });
+    }
+
+    // Return the current state of profile completion
+    return res.status(200).send({ isProfileCompleted: user.isProfileCompleted });
+
+  } catch (error) {
+    console.error('Error checking profile completion:', error);
+    return res.status(500).send({ message: 'Error checking profile completion' });
+  }
+};
+
+
+
+
+
+exports.getUserAddresses = async (req, res) => {
+  try {
+    // Fetch all addresses for the user
+    let addresses = await Address.findAll({
+      where: { UserId: req.params.userId },
+      attributes: ['id', 'country', 'city', 'street', 'zipCode', 'defaultAddress'],
+    });
+
+    if (addresses.length === 0) {
+      return res.status(200).send({ message: 'No addresses available', data: [] });
+    }
+
+    // Check if there is a default address
+    const defaultAddressExists = addresses.some(address => address.defaultAddress === true);
+
+    // If no default address exists, set the first address as default
+    if (!defaultAddressExists && addresses.length > 0) {
+      const firstAddressId = addresses[0].id;
+      await Address.update(
+        { defaultAddress: true },
+        { where: { id: firstAddressId } }
+      );
+
+      // Update the default address flag in the addresses array
+      addresses[0].defaultAddress = true;
+    }
+
+    res.status(200).send({ message: 'Addresses fetched successfully', data: addresses });
+  } catch (error) {
+    console.error('Error fetching addresses:', error);
+    res.status(500).send({ message: 'Error fetching addresses', error });
+  }
+};
+
+
+// Set a specific address as the default among multiple addresses
+exports.setDefaultAddress = async (req, res) => {
+  const { userId, addressId } = req.body;
+
+  try {
+    // Fetch all addresses for the user
+    const addresses = await Address.findAll({ where: { UserId: userId } });
+
+    if (addresses.length === 0) {
+      return res.status(404).send({ message: 'No addresses found for this user' });
+    }
+
+    // Remove default from all addresses
+    await Address.update(
+      { defaultAddress: false },
+      { where: { UserId: userId } }
+    );
+
+    // Set the selected address as the default
+    const [updated] = await Address.update(
+      { defaultAddress: true },
+      { where: { id: addressId, UserId: userId } }
+    );
+
+    if (updated === 0) {
+      return res.status(404).send({ message: 'Address not found' });
+    }
+
+    res.status(200).send({ message: 'Default address updated successfully' });
+  } catch (error) {
+    console.error('Error setting default address:', error);
+    res.status(500).send({ message: 'Error setting default address', error });
+  }
+};
+
+
 
 
 exports.getUserContactDetails = async (req, res) => {
@@ -489,7 +632,7 @@ exports.getUserContactDetails = async (req, res) => {
 
     // Fetch the most recent contact details for the user
     const contactDetails = await UserContactDetails.findOne({
-      where: { userId: userId },
+      where: { UserId: userId },
       attributes: ['phoneNumber', 'countryCode'], // Add all necessary attributes
       order: [['updatedAt', 'DESC']] // Ensure you have an updatedAt column for sorting
     });
@@ -516,12 +659,12 @@ exports.getUserContactDetails = async (req, res) => {
   }
 };
 
-
+// Get user meeting points
 exports.getMeetingPoints = async (req, res) => {
   try {
     const userId = req.params.userId;
     // Fetch all meeting points for the user from the database
-    const meetingPoints = await MeetingPoint.findAll({ where: { userId } });
+    const meetingPoints = await MeetingPoint.findAll({ where: { UserId: userId } });
 
     if (!meetingPoints || meetingPoints.length === 0) {
       return res.status(200).send({ message: 'No meeting points available', data: [] });
@@ -576,19 +719,20 @@ exports.getUserDetails = async (req, res) => {
 };
 
 
+// Get user payment info (multiple cards)
 exports.getUserPaymentInfo = async (req, res) => {
   try {
     const userId = req.params.userId;
 
-    // Fetch the most recent payment info for the user
-    const paymentInfo = await PaymentInfo.findOne({
-      where: { userId: userId },
-      attributes: ['cardNumber', 'cardHolderName', 'cvv', 'expirationDate'], // Add all necessary attributes
-      order: [['updatedAt', 'DESC']] // Ensure you have an updatedAt column for sorting
+    // Fetch all payment info for the user
+    const paymentInfo = await PaymentInfo.findAll({
+      where: { UserId: userId },
+      attributes: ['id', 'cardNumber', 'cardHolderName', 'cvv', 'expirationDate', 'isDefault'], // Include isDefault
+      order: [['updatedAt', 'DESC']] // Sort by most recent update
     });
 
-    if (!paymentInfo) {
-      return res.status(200).send({ message: 'No payment info available', data: {} });
+    if (!paymentInfo || paymentInfo.length === 0) {
+      return res.status(200).send({ message: 'No payment info available', data: [] });
     }
 
     res.status(200).send(paymentInfo);
@@ -597,6 +741,101 @@ exports.getUserPaymentInfo = async (req, res) => {
     res.status(500).send({ message: 'Error fetching payment info', error });
   }
 };
+
+// Add new payment info (multiple cards allowed)
+exports.updatePaymentInfo = async (req, res) => {
+  const { userId, cardNumber, cardHolderName, cvv, expirationDate } = req.body;
+
+  try {
+    // Check if the userId exists in the request
+    if (!userId) {
+      return res.status(400).send({ message: 'User ID is required' });
+    }
+
+    // Fetch the user using the userId
+    let user = await User.findByPk(userId);
+    if (!user) {
+      return res.status(404).send({ message: 'User not found' });
+    }
+
+    // Ensure all payment info fields are present
+    if (!cardNumber || !cardHolderName || !cvv || !expirationDate) {
+      return res.status(400).send({ message: 'All payment info fields are required' });
+    }
+
+    // Create a new payment info entry for the user (using the association)
+    await PaymentInfo.create({
+      cardNumber: cardNumber,
+      cardHolderName: cardHolderName,
+      cvv: cvv,
+      expirationDate: expirationDate,
+      UserId: user.id // Associate the payment info with the user
+    });
+
+    // Return a success message
+    res.status(200).send({ message: 'Payment info added successfully' });
+  } catch (error) {
+    console.error('Error adding payment info:', error);
+    res.status(500).send({ message: 'Error adding payment info', error: error.message || error });
+  }
+};
+
+// Delete payment info (single card)
+exports.deletePaymentInfo = async (req, res) => {
+  try {
+    const paymentId = req.params.paymentId;
+
+    // Find the payment info by ID and delete it
+    const paymentInfo = await PaymentInfo.findByPk(paymentId);
+
+    if (!paymentInfo) {
+      return res.status(404).send({ message: 'Payment info not found' });
+    }
+
+    await paymentInfo.destroy();
+    res.status(200).send({ message: 'Payment info deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting payment info:', error);
+    res.status(500).send({ message: 'Error deleting payment info', error });
+  }
+};
+
+// Set default payment method
+exports.setDefaultPaymentMethod = async (req, res) => {
+  const { userId, paymentId } = req.body;
+
+  try {
+    // Check if userId and paymentId exist in the request
+    if (!userId || !paymentId) {
+      return res.status(400).send({ message: 'User ID and payment ID are required' });
+    }
+
+    // Fetch the user
+    const user = await User.findByPk(userId);
+    if (!user) {
+      return res.status(404).send({ message: 'User not found' });
+    }
+
+    // Fetch the payment method to be marked as default
+    const paymentInfo = await PaymentInfo.findOne({ where: { id: paymentId, UserId: userId } });
+    if (!paymentInfo) {
+      return res.status(404).send({ message: 'Payment method not found' });
+    }
+
+    // Set all payment methods for the user to not be default
+    await PaymentInfo.update({ isDefault: false }, { where: { UserId: userId } });
+
+    // Mark the selected payment method as default
+    paymentInfo.isDefault = true;
+    await paymentInfo.save();
+
+    res.status(200).send({ message: 'Payment method set as default successfully' });
+  } catch (error) {
+    console.error('Error setting default payment method:', error);
+    res.status(500).send({ message: 'Error setting default payment method', error: error.message || error });
+  }
+};
+
 
 
 exports.getUserAvatar = async (req, res) => {
@@ -620,6 +859,7 @@ exports.getUserAvatar = async (req, res) => {
   }
 };
 
+// Update user avatar
 exports.updateUserAvatar = async (req, res) => {
   upload.single('avatar')(req, res, async function (err) {
     if (err) {
@@ -654,6 +894,7 @@ exports.updateUserAvatar = async (req, res) => {
   });
 };
 
+// Remove user avatar
 exports.removeUserAvatar = async (req, res) => {
   try {
     const userId = req.params.userId;
@@ -733,4 +974,5 @@ exports.getUserPreferences = async (req, res) => {
     res.status(500).json({ message: 'Error fetching user preferences', error });
   }
 };
+
 

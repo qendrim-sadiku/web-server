@@ -86,6 +86,10 @@ const User = sequelize.define('User', {
   role: {
     type: DataTypes.ENUM('user', 'admin', 'trainer'),
     defaultValue: 'user'
+  },
+  isProfileCompleted: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false, // By default, profile is not completed
   }
 });
 
