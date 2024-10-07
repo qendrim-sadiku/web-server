@@ -42,6 +42,11 @@ const Booking = sequelize.define('Booking', {
     allowNull: false,
     defaultValue: 'active', // Default status for new bookings
   },
+  isBookingConfirmed: {
+    type: DataTypes.BOOLEAN,
+    allowNull: false,
+    defaultValue: false, // Default to false, can be updated later to true
+  },
 }, {
   timestamps: true,
 });
