@@ -7,13 +7,13 @@ const userController = require('../controllers/userController');
 router.post('/create', verifyAdmin, userController.createUser);
 
 // Fetch all users (restricted to admins)
-router.get('/all', verifyAdmin, userController.getAllUsers);
+router.get('/all', userController.getAllUsers);
 
 // Route for creating or updating user profile (authenticated users only)
 router.post('/profile', authenticateJWT, userController.updateProfile);
 
 // Route for fetching user profile by userId (authenticated users only)
-router.get('/profile/:userId', authenticateJWT, userController.getProfile);
+router.get('/profile/:userId', userController.getProfile);
 
 // Route for updating user profile by userId (authenticated users only)
 router.put('/profile/:userId', authenticateJWT, userController.updateProfile);
@@ -28,7 +28,7 @@ router.put('/change-password', authenticateJWT, userController.updatePassword);
 router.put('/update-contact-details', authenticateJWT, userController.updateContactDetails);
 
 // Update address (authenticated users only)
-router.put('/update-address', authenticateJWT, userController.updateAddress);
+router.put('/update-addresses', userController.updateAddresses);
 
 // Update meeting points (authenticated users only)
 router.put('/update-meeting-points', authenticateJWT, userController.updateMeetingPoints);
@@ -38,17 +38,23 @@ router.put('/update-user-details', authenticateJWT, userController.updateUserDet
 
 // Update payment info (authenticated users only)
 router.put('/update-payment-info', authenticateJWT, userController.updatePaymentInfo);
+router.put('/user/:userId/default-address', authenticateJWT, userController.setDefaultAddress);
+router.delete('/payment-info/:paymentId', userController.deletePaymentInfo);
 
 // Update user info (authenticated users only)
 router.put('/user-info', authenticateJWT, userController.updateUserInfo);
 
 // Get user details by userId (authenticated users only)
 router.get('/user/:userId', authenticateJWT, userController.getUser);
-router.get('/user/:userId/address', authenticateJWT, userController.getUserAddress);
+router.put('/user/:userId/complete-profile', userController.completeUserProfile);
+
+
+router.get('/user/:userId/addresses', authenticateJWT, userController.getUserAddresses);
 router.get('/user/:userId/contact-details', authenticateJWT, userController.getUserContactDetails);
 router.get('/user/:userId/meeting-point', authenticateJWT, userController.getMeetingPoints);
 router.get('/user/:userId/details', authenticateJWT, userController.getUserDetails);
 router.get('/user/:userId/payment-info', authenticateJWT, userController.getUserPaymentInfo);
+router.put('/user/set-default-payment', userController.setDefaultPaymentMethod);
 
 // Handle user avatar (authenticated users only)
 router.get('/user/:userId/avatar', authenticateJWT, userController.getUserAvatar);
@@ -56,12 +62,15 @@ router.put('/user/:userId/avatar', authenticateJWT, userController.updateUserAva
 router.delete('/user/:userId/avatar', authenticateJWT, userController.removeUserAvatar);
 
 // Route to update user preferences (authenticated users only)
-router.put('/user/:userId/preferences', authenticateJWT, userController.updateUserPreferences);
+router.put('/user/:userId/preferences', userController.updateUserPreferences);
 
 // Route to get user preferences (authenticated users only)
-router.get('/user/:userId/preferences', authenticateJWT, userController.getUserPreferences);
+router.get('/user/:userId/preferences', userController.getUserPreferences);
 
 // Route to get specializations and expertise levels (public route, no authentication)
 router.get('/specializations-expertise', userController.getSpecializationsAndExpertise);
+
+// Route to check if the user's profile is completed (authenticated users only)
+router.get('/user/:userId/check-profile-completion', userController.checkProfileCompletion);
 
 module.exports = router;
