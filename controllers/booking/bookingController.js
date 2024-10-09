@@ -1,181 +1,14 @@
-// const { Booking, Participant, BookingDate } = require('../../models/Booking');
 const Booking = require('../../models/Bookings/Booking');
 const Participant = require('../../models/Bookings/Participant');
 const BookingDate = require('../../models/Bookings/BookingDate');
-const  Trainer  = require('../../models/Trainer/Trainer');
+const Trainer = require('../../models/Trainer/Trainer');
 const ServiceDetails = require('../../models/Services/ServiceDetails');
 const { Service } = require('../../models/Services/Service');
 const SubCategory = require('../../models/Category/SubCategory');
 const Category = require('../../models/Category/Category');
 const sequelize = require('../../config/sequelize');
 
-
-// exports.createBooking = async (req, res) => {
-//   const transaction = await sequelize.transaction();
-//   try {
-//     const { userId, serviceId, trainerId, address, participants = [], dates } = req.body; // Default participants to empty array if not provided
-
-//     // Ensure dates array is not empty
-//     if (!dates || dates.length === 0) {
-//       return res.status(400).json({ message: 'Booking dates are required' });
-//     }
-
-//     // Fetch the trainer to get the hourly rate
-//     const trainer = await Trainer.findByPk(trainerId);
-//     if (!trainer) {
-//       return res.status(404).json({ message: 'Trainer not found' });
-//     }
-
-//     let totalPrice = 0;
-//     const validDates = [];
-
-//     // Validate and calculate total price based on the number of hours booked and the trainer's hourly rate
-//     for (let date of dates) {
-//       const { date: datePart, startTime, endTime } = date;
-
-//       if (!datePart || !startTime || !endTime) {
-//         return res.status(400).json({ message: 'Date, start time, and end time are required for each booking date' });
-//       }
-
-//       const startDateTime = new Date(`${datePart}T${startTime}`);
-//       const endDateTime = new Date(`${datePart}T${endTime}`);
-
-//       if (isNaN(startDateTime.getTime()) || isNaN(endDateTime.getTime())) {
-//         return res.status(400).json({ message: 'Invalid date format for start time or end time' });
-//       }
-
-//       const hours = (endDateTime - startDateTime) / (1000 * 60 * 60);
-//       if (hours <= 0) {
-//         return res.status(400).json({ message: 'End time must be greater than start time' });
-//       }
-
-//       totalPrice += hours * trainer.hourlyRate;
-//       validDates.push({ date: datePart, startTime, endTime, bookingId: null });
-//     }
-
-//     // Create the booking
-//     const booking = await Booking.create({
-//       userId,
-//       serviceId,
-//       trainerId,
-//       address,
-//       totalPrice
-//     }, { transaction });
-
-//     // Ensure participants are unique to the current booking
-//     if (participants.length > 0) {
-//       const participantData = participants.map(participant => ({
-//         ...participant,
-//         bookingId: booking.id // Associate participants with the current booking
-//       }));
-//       await Participant.bulkCreate(participantData, { transaction });
-//     }
-
-//     // Add valid dates
-//     if (validDates.length > 0) {
-//       const dateData = validDates.map(date => ({
-//         ...date,
-//         bookingId: booking.id // Associate dates with the current booking
-//       }));
-//       await BookingDate.bulkCreate(dateData, { transaction });
-//     }
-
-//     await transaction.commit();
-//     res.status(201).json(booking);
-//   } catch (error) {
-//     await transaction.rollback();
-//     res.status(500).json({ error: error.message });
-//   }
-// };
-
-// exports.createBooking = async (req, res) => {
-//   const transaction = await sequelize.transaction();
-//   try {
-//     const { userId, serviceId, trainerId: providedTrainerId, address, participants = [], dates } = req.body; // Default participants to empty array if not provided
-
-//     // Ensure dates array is not empty
-//     if (!dates || dates.length === 0) {
-//       return res.status(400).json({ message: 'Booking dates are required' });
-//     }
-
-//     // Fetch the service to get the default trainer if trainerId is not provided
-//     let trainerId = providedTrainerId;
-//     if (!trainerId) {
-//       const service = await Service.findByPk(serviceId);
-//       if (!service || !service.defaultTrainerId) {
-//         return res.status(400).json({ message: 'No trainer specified and no default trainer found for the service' });
-//       }
-//       trainerId = service.defaultTrainerId;
-//     }
-
-//     // Fetch the trainer to get the hourly rate
-//     const trainer = await Trainer.findByPk(trainerId);
-//     if (!trainer) {
-//       return res.status(404).json({ message: 'Trainer not found' });
-//     }
-
-//     let totalPrice = 0;
-//     const validDates = [];
-
-//     // Validate and calculate total price based on the number of hours booked and the trainer's hourly rate
-//     for (let date of dates) {
-//       const { date: datePart, startTime, endTime } = date;
-
-//       if (!datePart || !startTime || !endTime) {
-//         return res.status(400).json({ message: 'Date, start time, and end time are required for each booking date' });
-//       }
-
-//       const startDateTime = new Date(`${datePart}T${startTime}`);
-//       const endDateTime = new Date(`${datePart}T${endTime}`);
-
-//       if (isNaN(startDateTime.getTime()) || isNaN(endDateTime.getTime())) {
-//         return res.status(400).json({ message: 'Invalid date format for start time or end time' });
-//       }
-
-//       const hours = (endDateTime - startDateTime) / (1000 * 60 * 60);
-//       if (hours <= 0) {
-//         return res.status(400).json({ message: 'End time must be greater than start time' });
-//       }
-
-//       totalPrice += hours * trainer.hourlyRate;
-//       validDates.push({ date: datePart, startTime, endTime, bookingId: null });
-//     }
-
-//     // Create the booking
-//     const booking = await Booking.create({
-//       userId,
-//       serviceId,
-//       trainerId,
-//       address,
-//       totalPrice
-//     }, { transaction });
-
-//     // Ensure participants are unique to the current booking
-//     if (participants.length > 0) {
-//       const participantData = participants.map(participant => ({
-//         ...participant,
-//         bookingId: booking.id // Associate participants with the current booking
-//       }));
-//       await Participant.bulkCreate(participantData, { transaction });
-//     }
-
-//     // Add valid dates
-//     if (validDates.length > 0) {
-//       const dateData = validDates.map(date => ({
-//         ...date,
-//         bookingId: booking.id // Associate dates with the current booking
-//       }));
-//       await BookingDate.bulkCreate(dateData, { transaction });
-//     }
-
-//     await transaction.commit();
-//     res.status(201).json(booking);
-//   } catch (error) {
-//     await transaction.rollback();
-//     res.status(500).json({ error: error.message });
-//   }
-// };
-
+// Create a booking with multiple sessions
 exports.createBooking = async (req, res) => {
   const transaction = await sequelize.transaction();
   try {
@@ -203,14 +36,14 @@ exports.createBooking = async (req, res) => {
     }
 
     let totalPrice = 0;
-    const validDates = [];
+    const validSessions = [];
 
-    // Validate and calculate total price based on the number of hours booked and the trainer's hourly rate
+    // Process and validate each session (date with start and end times)
     for (let date of dates) {
       const { date: datePart, startTime, endTime } = date;
 
       if (!datePart || !startTime || !endTime) {
-        return res.status(400).json({ message: 'Date, start time, and end time are required for each booking date' });
+        return res.status(400).json({ message: 'Date, start time, and end time are required for each booking session' });
       }
 
       const startDateTime = new Date(`${datePart}T${startTime}`);
@@ -226,7 +59,15 @@ exports.createBooking = async (req, res) => {
       }
 
       totalPrice += hours * trainer.hourlyRate;
-      validDates.push({ date: datePart, startTime, endTime, bookingId: null });
+
+      // Treat each date as a session
+      validSessions.push({
+        date: datePart,
+        startTime,
+        endTime,
+        bookingId: null, // Will be assigned after booking creation
+        sessionNumber: validSessions.length + 1 // Assign a session number
+      });
     }
 
     // Create the booking
@@ -238,27 +79,27 @@ exports.createBooking = async (req, res) => {
       totalPrice
     }, { transaction });
 
-    // Ensure participants are unique to the current booking
+    // Associate participants with the current booking
     if (participants.length > 0) {
       const participantData = participants.map(participant => ({
         ...participant,
-        bookingId: booking.id // Associate participants with the current booking
+        bookingId: booking.id
       }));
       await Participant.bulkCreate(participantData, { transaction });
     }
 
-    // Add valid dates
-    if (validDates.length > 0) {
-      const dateData = validDates.map(date => ({
-        ...date,
-        bookingId: booking.id // Associate dates with the current booking
+    // Associate valid sessions with the booking
+    if (validSessions.length > 0) {
+      const sessionData = validSessions.map(session => ({
+        ...session,
+        bookingId: booking.id
       }));
-      await BookingDate.bulkCreate(dateData, { transaction });
+      await BookingDate.bulkCreate(sessionData, { transaction });
     }
 
     await transaction.commit();
 
-    // Return booking details along with the bookingId
+    // Return booking details along with the sessions
     res.status(201).json({
       bookingId: booking.id,
       userId: booking.userId,
@@ -267,7 +108,7 @@ exports.createBooking = async (req, res) => {
       address: booking.address,
       totalPrice: booking.totalPrice,
       participants,
-      dates: validDates
+      sessions: validSessions // Display the sessions separately
     });
   } catch (error) {
     await transaction.rollback();
@@ -275,8 +116,7 @@ exports.createBooking = async (req, res) => {
   }
 };
 
-
-  
+// Get all bookings of a user
 exports.getAllBookingsOfUser = async (req, res) => {
   try {
     const { userId } = req.params;
@@ -337,7 +177,7 @@ exports.getAllBookingsOfUser = async (req, res) => {
   }
 };
 
-
+// Get booking by ID
 exports.getBookingById = async (req, res) => {
   try {
     const { id } = req.params; // Booking ID from URL
@@ -400,104 +240,101 @@ exports.getBookingById = async (req, res) => {
   }
 };
 
+exports.editBooking = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { address, participants, dates } = req.body;
 
-  exports.editBooking = async (req, res) => {
-    try {
-      const { id } = req.params;
-      const { address, participants, dates } = req.body;
-  
-      const booking = await Booking.findByPk(id);
-      if (!booking) {
-        return res.status(404).json({ message: 'Booking not found' });
-      }
-  
-      // Update address
-      booking.address = address || booking.address;
-  
-      // Update participants: Handle clearing of participants if the array is empty or provided
-      await Participant.destroy({ where: { bookingId: id } }); // Clear existing participants
-      if (participants && participants.length > 0) {
-        const participantData = participants.map(participant => ({
-          ...participant,
-          bookingId: id
-        }));
-        await Participant.bulkCreate(participantData);
-      }
-  
-      // Initialize total price to 0
-      let totalPrice = 0;
-  
-      // Fetch the trainer to get the hourly rate
-      const trainer = await Trainer.findByPk(booking.trainerId);
-      if (!trainer) {
-        return res.status(404).json({ message: 'Trainer not found' });
-      }
-  
-      // Update dates and calculate total price based on hours
-      await BookingDate.destroy({ where: { bookingId: id } }); // Clear existing dates
-      if (dates && dates.length > 0) {
-        const dateData = dates.map(date => {
-          const { date: datePart, startTime, endTime } = date;
-  
-          // Validate and combine date and time
-          const startDateTime = new Date(`${datePart}T${startTime}`);
-          const endDateTime = new Date(`${datePart}T${endTime}`);
-  
-          // Ensure startDateTime and endDateTime are valid dates
-          if (isNaN(startDateTime.getTime()) || isNaN(endDateTime.getTime())) {
-            throw new Error('Invalid date format for start time or end time');
-          }
-  
-          const hours = (endDateTime - startDateTime) / (1000 * 60 * 60); // Convert milliseconds to hours
-  
-          // Ensure the number of hours is a positive value
-          if (hours <= 0) {
-            throw new Error('End time must be greater than start time');
-          }
-  
-          // Accumulate the total price
-          totalPrice += hours * trainer.hourlyRate;
-  
-          return {
-            ...date,
-            bookingId: id
-          };
-        });
-  
-        await BookingDate.bulkCreate(dateData);
-      }
-  
-      // Update total price: If no dates are provided, totalPrice will remain 0
-      booking.totalPrice = totalPrice;
-      await booking.save();
-  
-      res.status(200).json(booking);
-    } catch (error) {
-      res.status(500).json({ error: error.message });
+    const booking = await Booking.findByPk(id);
+    if (!booking) {
+      return res.status(404).json({ message: 'Booking not found' });
     }
-  };
-  
-  
-  
-  // // Delete a booking
-  // exports.deleteBooking = async (req, res) => {
-  //   try {
-  //     const { id } = req.params;
-  
-  //     const booking = await Booking.findByPk(id);
-  //     if (!booking) {
-  //       return res.status(404).json({ message: 'Booking not found' });
-  //     }
-  
-  //     await Participant.destroy({ where: { bookingId: id } });
-  //     await BookingDate.destroy({ where: { bookingId: id } });
-  //     await booking.destroy();
-  
-  //     res.status(200).json({ message: 'Booking deleted successfully' });
-  //   } catch (error) {
-  //     res.status(500).json({ error: error.message });
-  //   }
-  // };
+
+    // Update address
+    booking.address = address || booking.address;
+
+    // Normalize category field in participants
+    const normalizedParticipants = participants.map(participant => ({
+      ...participant,
+      category: normalizeCategory(participant.category)
+    }));
+
+    // Update participants: Handle clearing of participants if the array is empty or provided
+    await Participant.destroy({ where: { bookingId: id } }); // Clear existing participants
+    if (normalizedParticipants.length > 0) {
+      const participantData = normalizedParticipants.map(participant => ({
+        ...participant,
+        bookingId: id
+      }));
+      await Participant.bulkCreate(participantData);
+    }
+
+    // Initialize total price to 0
+    let totalPrice = 0;
+
+    // Fetch the trainer to get the hourly rate
+    const trainer = await Trainer.findByPk(booking.trainerId);
+    if (!trainer) {
+      return res.status(404).json({ message: 'Trainer not found' });
+    }
+
+    // Update dates and calculate total price based on hours
+    await BookingDate.destroy({ where: { bookingId: id } }); // Clear existing dates
+    if (dates && dates.length > 0) {
+      const dateData = dates.map(date => {
+        const { date: datePart, startTime, endTime } = date;
+
+        // Validate and combine date and time
+        const startDateTime = new Date(`${datePart}T${startTime}`);
+        const endDateTime = new Date(`${datePart}T${endTime}`);
+
+        // Ensure startDateTime and endDateTime are valid dates
+        if (isNaN(startDateTime.getTime()) || isNaN(endDateTime.getTime())) {
+          throw new Error('Invalid date format for start time or end time');
+        }
+
+        const hours = (endDateTime - startDateTime) / (1000 * 60 * 60); // Convert milliseconds to hours
+
+        // Ensure the number of hours is a positive value
+        if (hours <= 0) {
+          throw new Error('End time must be greater than start time');
+        }
+
+        // Accumulate the total price
+        totalPrice += hours * trainer.hourlyRate;
+
+        return {
+          ...date,
+          bookingId: id
+        };
+      });
+
+      await BookingDate.bulkCreate(dateData);
+    }
+
+    // Update total price: If no dates are provided, totalPrice will remain 0
+    booking.totalPrice = totalPrice;
+    await booking.save();
+
+    res.status(200).json(booking);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+// Helper function to normalize category
+function normalizeCategory(category) {
+  switch (category) {
+    case 'Adults':
+      return 'Adult';
+    case 'Teenagers':
+      return 'Teenager';
+    case 'Children':
+      return 'Child';
+    default:
+      return category; // Return as is if it's already correct
+  }
+}
 
 // Cancel a booking
 exports.cancelBooking = async (req, res) => {
@@ -519,9 +356,6 @@ exports.cancelBooking = async (req, res) => {
     res.status(500).json({ error: error.message }); // Handle any errors that occur during the process
   }
 };
-
-
-
 
 // Get user bookings with categorized data
 exports.getUserBookings = async (req, res) => {
@@ -602,13 +436,7 @@ exports.getUserBookings = async (req, res) => {
   }
 };
 
-
-
-
-
-
-
-  // Rebook a service
+// Rebook a service
 exports.rebookService = async (req, res) => {
   try {
     const { bookingId } = req.params;
