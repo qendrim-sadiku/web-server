@@ -8,6 +8,7 @@ router.get('/bookings/:id', bookingController.getBookingById);
 router.put('/booking/:id', bookingController.editBooking);
 router.put('/bookings/:id/cancel', bookingController.cancelBooking);
 router.post('/bookings/:bookingId/rebook', bookingController.rebookService);
-
+// Route to extend a session (modify only the end time)
+router.put('/bookings/extend-session/:id', bookingController.extendSession);
 
 module.exports = router;

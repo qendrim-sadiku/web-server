@@ -8,7 +8,22 @@ const SubCategory = require('../../models/Category/SubCategory');
 const Category = require('../../models/Category/Category');
 const sequelize = require('../../config/sequelize');
 
-// Create a booking with multiple sessions
+
+
+// Helper function to convert 12-hour time format to 24-hour format
+const convertTo24HourFormat = (time) => {
+  const [hours, minutes, period] = time.match(/(\d+):(\d+):(\d+)? ?(AM|PM)?/).slice(1);
+  let formattedHours = parseInt(hours, 10);
+  
+  if (period === 'PM' && formattedHours < 12) {
+    formattedHours += 12;
+  } else if (period === 'AM' && formattedHours === 12) {
+    formattedHours = 0;
+  }
+
+  return `${formattedHours.toString().padStart(2, '0')}:${minutes}:00`;
+};
+
 exports.createBooking = async (req, res) => {
   const transaction = await sequelize.transaction();
   try {
@@ -40,10 +55,18 @@ exports.createBooking = async (req, res) => {
 
     // Process and validate each session (date with start and end times)
     for (let date of dates) {
-      const { date: datePart, startTime, endTime } = date;
+      let { date: datePart, startTime, endTime } = date;
 
       if (!datePart || !startTime || !endTime) {
         return res.status(400).json({ message: 'Date, start time, and end time are required for each booking session' });
+      }
+
+      // Check if times are in 12-hour format and convert them to 24-hour format
+      if (startTime.match(/(AM|PM)/)) {
+        startTime = convertTo24HourFormat(startTime);
+      }
+      if (endTime.match(/(AM|PM)/)) {
+        endTime = convertTo24HourFormat(endTime);
       }
 
       const startDateTime = new Date(`${datePart}T${startTime}`);
@@ -53,7 +76,7 @@ exports.createBooking = async (req, res) => {
         return res.status(400).json({ message: 'Invalid date format for start time or end time' });
       }
 
-      const hours = (endDateTime - startDateTime) / (1000 * 60 * 60);
+      const hours = (endDateTime - startDateTime) / (1000 * 60 * 60); // Convert milliseconds to hours
       if (hours <= 0) {
         return res.status(400).json({ message: 'End time must be greater than start time' });
       }
@@ -115,6 +138,7 @@ exports.createBooking = async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 };
+
 
 // Get all bookings of a user
 exports.getAllBookingsOfUser = async (req, res) => {
@@ -245,21 +269,22 @@ exports.editBooking = async (req, res) => {
     const { id } = req.params;
     const { address, participants, dates } = req.body;
 
+    // Find the booking by ID
     const booking = await Booking.findByPk(id);
     if (!booking) {
       return res.status(404).json({ message: 'Booking not found' });
     }
 
-    // Update address
+    // Update the address if provided
     booking.address = address || booking.address;
 
-    // Normalize category field in participants
+    // Normalize and update participants
     const normalizedParticipants = participants.map(participant => ({
       ...participant,
       category: normalizeCategory(participant.category)
     }));
 
-    // Update participants: Handle clearing of participants if the array is empty or provided
+    // Clear existing participants and update with new ones
     await Participant.destroy({ where: { bookingId: id } }); // Clear existing participants
     if (normalizedParticipants.length > 0) {
       const participantData = normalizedParticipants.map(participant => ({
@@ -278,21 +303,28 @@ exports.editBooking = async (req, res) => {
       return res.status(404).json({ message: 'Trainer not found' });
     }
 
-    // Update dates and calculate total price based on hours
+    // Clear existing dates and update with new dates, calculate total price
     await BookingDate.destroy({ where: { bookingId: id } }); // Clear existing dates
+
     if (dates && dates.length > 0) {
       const dateData = dates.map(date => {
+        // Validate and ensure that date, startTime, and endTime are present
+        if (!date || !date.date || !date.startTime || !date.endTime) {
+          throw new Error('Invalid date, start time, or end time');
+        }
+
         const { date: datePart, startTime, endTime } = date;
 
-        // Validate and combine date and time
+        // Combine date and time
         const startDateTime = new Date(`${datePart}T${startTime}`);
         const endDateTime = new Date(`${datePart}T${endTime}`);
 
-        // Ensure startDateTime and endDateTime are valid dates
+        // Ensure the date format is valid
         if (isNaN(startDateTime.getTime()) || isNaN(endDateTime.getTime())) {
           throw new Error('Invalid date format for start time or end time');
         }
 
+        // Calculate the duration in hours
         const hours = (endDateTime - startDateTime) / (1000 * 60 * 60); // Convert milliseconds to hours
 
         // Ensure the number of hours is a positive value
@@ -304,23 +336,105 @@ exports.editBooking = async (req, res) => {
         totalPrice += hours * trainer.hourlyRate;
 
         return {
-          ...date,
+          date: datePart,
+          startTime,
+          endTime,
           bookingId: id
         };
       });
 
-      await BookingDate.bulkCreate(dateData);
+      // If valid date data exists, bulk create BookingDates
+      if (dateData.length > 0) {
+        await BookingDate.bulkCreate(dateData);
+      }
     }
 
-    // Update total price: If no dates are provided, totalPrice will remain 0
+    // Update the total price and save the booking
     booking.totalPrice = totalPrice;
     await booking.save();
 
+    // Respond with the updated booking
     res.status(200).json(booking);
+  } catch (error) {
+    // Catch any errors and respond with 500
+    res.status(500).json({ error: error.message });
+  }
+};
+
+exports.extendSession = async (req, res) => {
+  try {
+    const { id } = req.params; // Booking ID
+    const { newEndTime, sessionDate } = req.body; // New end time and session date
+
+    // Find the booking by ID
+    const booking = await Booking.findByPk(id);
+    if (!booking) {
+      return res.status(404).json({ message: 'Booking not found' });
+    }
+
+    // Find the BookingDate by matching the bookingId and the sessionDate
+    const bookingDate = await BookingDate.findOne({
+      where: {
+        bookingId: id,
+        date: sessionDate, // Matching based on the session date
+      },
+    });
+
+    if (!bookingDate) {
+      return res.status(404).json({ message: 'Booking date not found for the provided session date' });
+    }
+
+    // Fetch the trainer to get the hourly rate
+    const trainer = await Trainer.findByPk(booking.trainerId);
+    if (!trainer) {
+      return res.status(404).json({ message: 'Trainer not found' });
+    }
+
+    // Validate new end time
+    const startDateTime = new Date(`${bookingDate.date}T${bookingDate.startTime}`);
+    const newEndDateTime = new Date(`${bookingDate.date}T${newEndTime}`);
+
+    if (isNaN(newEndDateTime.getTime())) {
+      throw new Error('Invalid end time format');
+    }
+
+    // Ensure the new end time is later than the current start time
+    const newDuration = (newEndDateTime - startDateTime) / (1000 * 60 * 60); // Convert milliseconds to hours
+
+    if (newDuration <= 0) {
+      throw new Error('End time must be greater than start time');
+    }
+
+    // Calculate the price difference for the extended time
+    const currentDuration = (new Date(`${bookingDate.date}T${bookingDate.endTime}`) - startDateTime) / (1000 * 60 * 60);
+    const extraHours = newDuration - currentDuration;
+
+    if (extraHours <= 0) {
+      throw new Error('The new end time must extend the current session');
+    }
+
+    // Update the booking's total price
+    const extraPrice = extraHours * trainer.hourlyRate;
+    booking.totalPrice += extraPrice;
+
+    // Save the updated booking and booking date
+    bookingDate.endTime = newEndTime;
+    await bookingDate.save();
+    await booking.save();
+
+    // Respond with the updated booking and booking date
+    res.status(200).json({
+      message: 'Session extended successfully',
+      booking,
+      bookingDate
+    });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 };
+
+
+
 
 // Helper function to normalize category
 function normalizeCategory(category) {

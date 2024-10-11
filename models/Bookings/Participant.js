@@ -26,7 +26,18 @@ const Participant = sequelize.define('Participant', {
   },
   age: {
     type: DataTypes.INTEGER,
-    allowNull: false
+    validate: {
+      isValidAge(value) {
+        if (this.category === 'Teenager' || this.category === 'Child') {
+          if (!value) {
+            throw new Error('Age is required for Teenagers and Children.');
+          }
+          if (value <= 0) {
+            throw new Error('Age must be a positive number.');
+          }
+        }
+      }
+    }
   },
   category: {
     type: DataTypes.ENUM('Adult', 'Teenager', 'Child'),
