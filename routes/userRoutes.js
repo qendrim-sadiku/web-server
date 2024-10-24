@@ -48,7 +48,6 @@ router.put('/user-info', authenticateJWT, userController.updateUserInfo);
 router.get('/user/:userId', authenticateJWT, userController.getUser);
 router.put('/user/:userId/complete-profile', userController.completeUserProfile);
 
-
 router.get('/user/:userId/addresses', authenticateJWT, userController.getUserAddresses);
 router.get('/user/:userId/contact-details', authenticateJWT, userController.getUserContactDetails);
 router.get('/user/:userId/meeting-point', authenticateJWT, userController.getMeetingPoints);
@@ -65,12 +64,73 @@ router.delete('/user/:userId/avatar', authenticateJWT, userController.removeUser
 router.put('/user/:userId/preferences', userController.updateUserPreferences);
 
 // Route to get user preferences (authenticated users only)
-router.get('/user/:userId/preferences', userController.getUserPreferences);
+// router.get('/user/:userId/preferences', userController.getUserPreferences);
+
+// Add the separate routes for updating individual preferences
+router.get('/user/:userId/preferences', authenticateJWT, userController.getUserPreferences);
+
+// Route to update two-factor authentication (authenticated users only)
+router.put('/user/:userId/preferences/two-factor-authentication', authenticateJWT, userController.updateTwoFactorAuthentication);
+
+// Route to update email notifications (authenticated users only)
+router.put('/user/:userId/preferences/email-notifications', authenticateJWT, userController.updateEmailNotifications);
+
+// Route to update dive location preference (authenticated users only)
+router.put('/user/:userId/preferences/device-location', userController.updateDeviceLocation);
+
+// Route to update live location preference (authenticated users only)
+router.put('/user/:userId/preferences/live-location', userController.updateLiveLocation);
+
+// Add these routes to userRouter.js or wherever you manage user-related routes
+
+// Route to get dive location preference
+router.get('/user/:userId/preferences/device-location', userController.getDeviceLocationPreference);
+
+// Route to get live location preference
+router.get('/user/:userId/preferences/live-location', userController.getLiveLocationPreference);
+
 
 // Route to get specializations and expertise levels (public route, no authentication)
 router.get('/specializations-expertise', userController.getSpecializationsAndExpertise);
 
 // Route to check if the user's profile is completed (authenticated users only)
 router.get('/user/:userId/check-profile-completion', userController.checkProfileCompletion);
+
+router.put('/update-phone', userController.updateUserPhoneNumber);
+router.get('/get-phone/:userId', userController.getUserPhoneNumber);
+
+// GET appearance preference
+router.get('/user/:userId/preferences/appearance', userController.getAppearance);
+
+// PUT appearance preference
+router.put('/user/:userId/preferences/appearance', userController.setAppearance);
+
+router.get(
+    '/user/:userId/preferences/communication-method',
+    authenticateJWT,
+    userController.getCommunicationMethod
+);
+
+router.put(
+    '/user/:userId/preferences/communication-method',
+    authenticateJWT,
+    userController.updateCommunicationMethod
+);
+
+router.get(
+    '/user/:userId/preferences/notifications',
+    authenticateJWT,
+    userController.getNotifications
+);
+
+router.put(
+    '/user/:userId/preferences/notifications',
+    authenticateJWT,
+    userController.updateNotifications
+);
+
+router.get('/user/:userId/preferences/email-notifications', authenticateJWT, userController.getEmailNotifications);
+
+router.post('/send-test-sms', userController.sendTestSms);
 
 module.exports = router;

@@ -11,6 +11,8 @@ const Address = require('../models/UserProfile/Address');
 const MeetingPoint = require('../models/UserProfile/MeetingPoint');
 const UserDetails = require('../models/UserProfile/UserDetails');
 const PaymentInfo = require('../models/UserProfile/PaymentInfo');
+const UserPreferences = require('../models/UserProfile/UserPreferences');
+const twilioClient = require('../config/twilioClient'); // Adjust the path if necessary
 
 
 // Configure multer for file upload
@@ -465,7 +467,11 @@ exports.updateAddresses = async (req, res) => {
       }
 
       // Upsert the address (insert if new, or update if existing)
-      await Address.upsert({ ...address, UserId: user.id });
+      await Address.upsert({ 
+        ...address, 
+        UserId: user.id,
+        instructions: address.instructions || null  // Handle optional 'instructions'
+      });
     }
 
     res.status(200).send({ message: 'Addresses updated successfully' });
@@ -477,12 +483,12 @@ exports.updateAddresses = async (req, res) => {
 
 
 
-
+// Get user profile
 // Get user profile
 exports.getUser = async (req, res) => {
   try {
     const user = await User.findByPk(req.params.userId, {
-      attributes: ['id', 'username', 'email', 'name', 'surname', 'password', 'role', 'createdAt', 'updatedAt', 'isProfileCompleted'] // Add isProfileCompleted
+      attributes: ['id', 'username', 'email', 'name', 'surname', 'avatar', 'password', 'role', 'createdAt', 'updatedAt', 'isProfileCompleted'] // Added avatar here
     });
 
     if (!user) {
@@ -494,6 +500,7 @@ exports.getUser = async (req, res) => {
     res.status(500).send({ message: 'Error fetching user', error });
   }
 };
+
 
 // Update user's profile completion status
 exports.completeUserProfile = async (req, res) => {
@@ -558,7 +565,7 @@ exports.getUserAddresses = async (req, res) => {
     // Fetch all addresses for the user
     let addresses = await Address.findAll({
       where: { UserId: req.params.userId },
-      attributes: ['id', 'country', 'city', 'street', 'zipCode', 'defaultAddress'],
+      attributes: ['id', 'country', 'city', 'street', 'state', 'zipCode', 'instructions', 'defaultAddress'],  // Include 'instructions'
     });
 
     if (addresses.length === 0) {
@@ -955,9 +962,59 @@ exports.getSpecializationsAndExpertise = (req, res) => {
   }
 };
 
-// Get user preferences
+// Get all user preferences
 exports.getUserPreferences = async (req, res) => {
-  const { userId } = req.params;
+  try {
+    const { userId } = req.params;
+
+    // Fetch user preferences based on the userId
+    const userPreferences = await UserPreferences.findOne({ where: { UserId: userId } });
+
+    // If preferences do not exist, return a default set or message
+    if (!userPreferences) {
+      return res.status(404).json({ message: 'User preferences not found' });
+    }
+
+    // Return the user preferences
+    return res.status(200).json(userPreferences);
+  } catch (error) {
+    console.error('Error fetching user preferences:', error);
+    return res.status(500).json({ message: 'Failed to fetch user preferences', error });
+  }
+};
+
+
+
+// Update two-factor authentication
+exports.updateTwoFactorAuthentication = async (req, res) => {
+  try {
+    const { userId, twoFactorAuthentication } = req.body;
+
+    // Fetch the user preferences using UserId
+    let userPreferences = await UserPreferences.findOne({ where: { UserId: userId } });
+
+    // If preferences do not exist, create them
+    if (!userPreferences) {
+      userPreferences = await UserPreferences.create({ 
+        UserId: userId, 
+        twoFactorAuthentication: twoFactorAuthentication 
+      });
+    } else {
+      // Update the twoFactorAuthentication field
+      userPreferences.twoFactorAuthentication = twoFactorAuthentication;
+      await userPreferences.save();
+    }
+
+    res.status(200).json({ message: 'Two-factor authentication updated successfully' });
+  } catch (error) {
+    console.error('Error updating two-factor authentication:', error);
+    res.status(500).json({ message: 'Failed to update two-factor authentication', error });
+  }
+};
+
+// Update email notifications preference
+exports.updateEmailNotifications = async (req, res) => {
+  const { userId, emailNotifications } = req.body;
 
   try {
     const user = await User.findByPk(userId);
@@ -965,14 +1022,476 @@ exports.getUserPreferences = async (req, res) => {
       return res.status(404).send({ message: 'User not found' });
     }
 
-    res.status(200).json({
-      sportPreference: user.sportPreference,
-      expertisePreference: user.expertisePreference
-    });
+    const userPreferences = await user.getUserPreferences();
+    await userPreferences.update({ emailNotifications });
+
+    res.status(200).send({ message: 'Email notifications updated successfully' });
   } catch (error) {
-    console.error('Error fetching user preferences:', error);
-    res.status(500).json({ message: 'Error fetching user preferences', error });
+    console.error('Error updating email notifications:', error);
+    res.status(500).send({ message: 'Error updating email notifications', error });
   }
 };
 
 
+// Update device location preference
+exports.updateDeviceLocation = async (req, res) => {
+  try {
+    const { userId } = req.params; // Get userId from URL params
+    const { deviceLocation } = req.body; // Get diveLocation from request body
+
+    if (!userId) {
+      return res.status(400).json({ message: 'Invalid userId' });
+    }
+
+    // Fetch the user preferences using userId
+    let userPreferences = await UserPreferences.findOne({ where: { userId } });
+
+    // If preferences do not exist, create them
+    if (!userPreferences) {
+      userPreferences = await UserPreferences.create({ 
+        UserId: userId, // Make sure to include userId here
+        deviceLocation: deviceLocation 
+      });
+    } else {
+      // Update the diveLocation field
+      userPreferences.deviceLocation = deviceLocation;
+      await userPreferences.save();
+    }
+
+    res.status(200).json({ message: 'Device location preference updated successfully' });
+  } catch (error) {
+    console.error('Error updating device location preference:', error);
+    res.status(500).json({ message: 'Failed to update device location preference', error });
+  }
+};
+
+
+
+exports.updateLiveLocation = async (req, res) => {
+  try {
+    const { userId } = req.params; // Get userId from URL params
+    const { liveLocation } = req.body; // Get liveLocation from the request body
+
+    // Check if userId exists
+    if (!userId) {
+      return res.status(400).json({ message: 'Invalid userId' });
+    }
+
+    // Fetch the user preferences using UserId (case-sensitive)
+    let userPreferences = await UserPreferences.findOne({ where: { UserId: userId } });
+
+    // If preferences do not exist, create them
+    if (!userPreferences) {
+      userPreferences = await UserPreferences.create({
+        UserId: userId, // Ensure proper case for the UserId
+        liveLocation: liveLocation 
+      });
+    } else {
+      // Update the liveLocation field
+      userPreferences.liveLocation = liveLocation;
+      await userPreferences.save();
+    }
+
+    res.status(200).json({ message: 'Live location preference updated successfully' });
+  } catch (error) {
+    console.error('Error updating live location preference:', error);
+    res.status(500).json({ message: 'Failed to update live location preference', error });
+  }
+};
+
+
+// Get device location preference
+exports.getDeviceLocationPreference = async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    // Fetch the user preferences using userId
+    let userPreferences = await UserPreferences.findOne({ where: {  UserId: userId  } });
+
+    // If preferences do not exist, create default preferences
+    if (!userPreferences) {
+      userPreferences = await UserPreferences.create({ 
+        UserId: userId, 
+        deviceLocation: false // Default value for diveLocation
+      });
+    }
+
+    res.status(200).json({ deviceLocation: userPreferences.deviceLocation });
+  } catch (error) {
+    console.error('Error fetching device location preference:', error);
+    res.status(500).json({ message: 'Failed to fetch device location preference', error });
+  }
+};
+
+// Get live location preference
+exports.getLiveLocationPreference = async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    // Fetch the user preferences using userId
+    let userPreferences = await UserPreferences.findOne({ where: { userId } });
+
+    // If preferences do not exist, create default preferences
+    if (!userPreferences) {
+      userPreferences = await UserPreferences.create({ 
+        userId: userId, 
+        liveLocation: false // Default value for liveLocation
+      });
+    }
+
+    res.status(200).json({ liveLocation: userPreferences.liveLocation });
+  } catch (error) {
+    console.error('Error fetching live location preference:', error);
+    res.status(500).json({ message: 'Failed to fetch live location preference', error });
+  }
+};
+
+exports.updateUserPhoneNumber = async (req, res) => {
+  const { userId, phoneNumber, countryCode } = req.body;
+
+  try {
+    // Check if userId, phoneNumber, and countryCode are provided
+    if (!userId) {
+      return res.status(400).send({ message: 'User ID is required' });
+    }
+    if (!phoneNumber || !countryCode) {
+      return res.status(400).send({ message: 'Phone number and country code are required' });
+    }
+
+    // Find the user's contact details
+    let userDetails = await UserContactDetails.findOne({ where: { UserId: userId } });
+
+    if (!userDetails) {
+      // If no contact details exist, create a new record
+      userDetails = await UserContactDetails.create({
+        UserId: userId,
+        phoneNumber: phoneNumber,
+        countryCode: countryCode
+      });
+      return res.status(201).send({ message: 'Phone number created successfully' });
+    }
+
+    // Update existing contact details with new phone number and country code
+    await userDetails.update({
+      phoneNumber: phoneNumber,
+      countryCode: countryCode
+    });
+
+    res.status(200).send({ message: 'Phone number updated successfully' });
+  } catch (error) {
+    console.error('Error updating phone number:', error);
+    res.status(500).send({ message: 'Error updating phone number', error: error.message || error });
+  }
+};
+
+
+exports.getUserPhoneNumber = async (req, res) => {
+  const { userId } = req.params;
+
+  try {
+    if (!userId) {
+      return res.status(400).send({ message: 'User ID is required' });
+    }
+
+    let userDetails = await UserContactDetails.findOne({
+      where: { UserId: userId },
+      attributes: ['phoneNumber', 'countryCode']
+    });
+
+    if (!userDetails) {
+      return res.status(404).send({ message: 'User details not found' });
+    }
+
+    res.status(200).send({
+      phoneNumber: userDetails.phoneNumber,
+      countryCode: userDetails.countryCode
+    });
+  } catch (error) {
+    console.error('Error fetching phone number:', error);
+    res.status(500).send({ message: 'Error fetching phone number', error: error.message || error });
+  }
+};
+
+exports.sendTestSms = async (req, res) => {
+  const { to, message } = req.body;
+
+  // Basic validation
+  if (!to || !message) {
+    return res.status(400).json({ success: false, error: 'Both "to" and "message" fields are required.' });
+  }
+
+  try {
+    const sms = await twilioClient.messages.create({
+      body: message,
+      from: process.env.TWILIO_PHONE_NUMBER, // Ensure this is set in your .env file
+      to: to,
+    });
+
+    res.status(200).json({ success: true, sid: sms.sid });
+  } catch (error) {
+    console.error('Twilio SMS Error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+
+
+/**
+ * Get the appearance preference for a user by userId.
+ */
+/**
+ * Get the appearance preference for a user by userId, or create default preferences if not found.
+ */
+exports.getAppearance = async (req, res) => {
+  try {
+    const { userId } = req.params; // Extract userId from the request params
+
+    // Try to find the user's preferences
+    let preferences = await UserPreferences.findOne({ where: { UserId: userId } });
+
+    // If no preferences are found, create default preferences
+    if (!preferences) {
+      preferences = await UserPreferences.create({
+        UserId: userId,
+        appearance: 'light' // Default appearance is 'light'
+      });
+    }
+
+    res.status(200).json({ appearance: preferences.appearance });
+  } catch (error) {
+    console.error('Error fetching appearance preference:', error);
+    res.status(500).json({ message: 'Internal server error.' });
+  }
+};
+
+/**
+ * Update the appearance preference for a user by userId.
+ */
+exports.setAppearance = async (req, res) => {
+  try {
+    const { userId } = req.params; // Extract userId from the request params
+    const { appearance } = req.body; // Get the appearance value from the request body
+
+    // Validate the appearance value
+    if (!['light', 'dark'].includes(appearance)) {
+      return res.status(400).json({ message: 'Invalid appearance value. It must be either "light" or "dark".' });
+    }
+
+    // Find the user's preferences
+    const preferences = await UserPreferences.findOne({ where: { UserId: userId } });
+
+    if (!preferences) {
+      return res.status(404).json({ message: 'User preferences not found.' });
+    }
+
+    // Update the appearance preference
+    preferences.appearance = appearance;
+    await preferences.save();
+
+    res.status(200).json({ message: 'Appearance preference updated successfully.', appearance: preferences.appearance });
+  } catch (error) {
+    console.error('Error updating appearance preference:', error);
+    res.status(500).json({ message: 'Internal server error.' });
+  }
+};
+
+/**
+ * Get Communication Method Preference
+ */
+exports.getCommunicationMethod = async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    if (!userId) {
+      return res.status(400).json({ message: 'User ID is required.' });
+    }
+
+    // Fetch the user preferences using UserId
+    let preferences = await UserPreferences.findOne({ where: { UserId: userId } });
+
+    // If no preferences are found, create default preferences
+    if (!preferences) {
+      preferences = await UserPreferences.create({
+        UserId: userId,
+        communicationMethod: 'text', // Default communication method
+      });
+    }
+
+    res.status(200).json({ communicationMethod: preferences.communicationMethod });
+  } catch (error) {
+    console.error('Error fetching communication method preference:', error);
+    res.status(500).json({ message: 'Failed to fetch communication method preference.', error: error.message || error });
+  }
+};
+
+/**
+ * Update Communication Method Preference
+ */
+exports.updateCommunicationMethod = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { communicationMethod } = req.body;
+
+    const validMethods = ['call', 'text', 'both'];
+    if (!validMethods.includes(communicationMethod)) {
+      return res.status(400).json({
+        message: `Invalid communication method. It must be one of: ${validMethods.join(', ')}.`,
+      });
+    }
+
+    if (!userId) {
+      return res.status(400).json({ message: 'User ID is required.' });
+    }
+
+    // Find the user's preferences
+    const preferences = await UserPreferences.findOne({ where: { UserId: userId } });
+
+    if (!preferences) {
+      return res.status(404).json({ message: 'User preferences not found.' });
+    }
+
+    // Update the communicationMethod preference
+    preferences.communicationMethod = communicationMethod;
+    await preferences.save();
+
+    res.status(200).json({
+      message: 'Communication method preference updated successfully.',
+      communicationMethod: preferences.communicationMethod,
+    });
+  } catch (error) {
+    console.error('Error updating communication method preference:', error);
+    res.status(500).json({ message: 'Failed to update communication method preference.', error: error.message || error });
+  }
+};
+
+/**
+ * Get Notifications Preference
+ */
+exports.getNotifications = async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    if (!userId) {
+      return res.status(400).json({ message: 'User ID is required.' });
+    }
+
+    // Fetch the user preferences using UserId
+    let preferences = await UserPreferences.findOne({ where: { UserId: userId } });
+
+    // If no preferences are found, create default preferences
+    if (!preferences) {
+      preferences = await UserPreferences.create({
+        UserId: userId,
+        notifications: true, // Default is enabled
+      });
+    }
+
+    res.status(200).json({ notifications: preferences.notifications });
+  } catch (error) {
+    console.error('Error fetching notifications preference:', error);
+    res.status(500).json({ message: 'Failed to fetch notifications preference.', error: error.message || error });
+  }
+};
+
+/**
+ * Update Notifications Preference
+ */
+exports.updateNotifications = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { notifications } = req.body;
+
+    if (typeof notifications !== 'boolean') {
+      return res.status(400).json({ message: 'Notifications must be a boolean value.' });
+    }
+
+    if (!userId) {
+      return res.status(400).json({ message: 'User ID is required.' });
+    }
+
+    // Find the user's preferences
+    const preferences = await UserPreferences.findOne({ where: { UserId: userId } });
+
+    if (!preferences) {
+      return res.status(404).json({ message: 'User preferences not found.' });
+    }
+
+    // Update the notifications preference
+    preferences.notifications = notifications;
+    await preferences.save();
+
+    res.status(200).json({
+      message: 'Notifications preference updated successfully.',
+      notifications: preferences.notifications,
+    });
+  } catch (error) {
+    console.error('Error updating notifications preference:', error);
+    res.status(500).json({ message: 'Failed to update notifications preference.', error: error.message || error });
+  }
+};
+
+/**
+ * Get Email Notifications Preference
+ */
+exports.getEmailNotifications = async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    if (!userId) {
+      return res.status(400).json({ message: 'User ID is required.' });
+    }
+
+    // Fetch the user preferences using UserId
+    let preferences = await UserPreferences.findOne({ where: { UserId: userId } });
+
+    // If no preferences are found, create default preferences
+    if (!preferences) {
+      preferences = await UserPreferences.create({
+        UserId: userId,
+        emailNotifications: true, // Default is enabled
+      });
+    }
+
+    res.status(200).json({ emailNotifications: preferences.emailNotifications });
+  } catch (error) {
+    console.error('Error fetching email notifications preference:', error);
+    res.status(500).json({ message: 'Failed to fetch email notifications preference.', error: error.message || error });
+  }
+};
+
+/**
+ * Update Email Notifications Preference
+ */
+exports.updateEmailNotifications = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { emailNotifications } = req.body;
+
+    if (typeof emailNotifications !== 'boolean') {
+      return res.status(400).json({ message: 'Email notifications must be a boolean value.' });
+    }
+
+    if (!userId) {
+      return res.status(400).json({ message: 'User ID is required.' });
+    }
+
+    // Find the user's preferences
+    const preferences = await UserPreferences.findOne({ where: { UserId: userId } });
+
+    if (!preferences) {
+      return res.status(404).json({ message: 'User preferences not found.' });
+    }
+
+    // Update the emailNotifications preference
+    preferences.emailNotifications = emailNotifications;
+    await preferences.save();
+
+    res.status(200).json({
+      message: 'Email notifications preference updated successfully.',
+      emailNotifications: preferences.emailNotifications,
+    });
+  } catch (error) {
+    console.error('Error updating email notifications preference:', error);
+    res.status(500).json({ message: 'Failed to update email notifications preference.', error: error.message || error });
+  }
+};

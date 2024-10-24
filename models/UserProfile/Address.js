@@ -26,6 +26,10 @@ const Address = sequelize.define('Address', {
     type: DataTypes.BOOLEAN,
     defaultValue: false,  // One address can be marked as default
   },
+  instructions: {  // New property added
+    type: DataTypes.TEXT,
+    allowNull: true,  // Optional field
+  },
   UserId: {
     type: DataTypes.INTEGER,
     references: {

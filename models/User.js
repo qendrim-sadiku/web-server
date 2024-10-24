@@ -7,6 +7,7 @@ const Address = require('./UserProfile/Address');
 const MeetingPoint = require('./UserProfile/MeetingPoint');
 const UserDetails = require('./UserProfile/UserDetails');
 const PaymentInfo = require('./UserProfile/PaymentInfo');
+const UserPreferences = require('./UserProfile/UserPreferences');
 
 const User = sequelize.define('User', {
   id: {
@@ -107,5 +108,8 @@ UserContactDetails.belongsTo(User);
 
 User.hasOne(PaymentInfo, { onDelete: 'CASCADE' });
 PaymentInfo.belongsTo(User);
+
+User.hasOne(UserPreferences, { onDelete: 'CASCADE' });
+UserPreferences.belongsTo(User);
 
 module.exports = User;
