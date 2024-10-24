@@ -202,6 +202,7 @@ exports.getAllBookingsOfUser = async (req, res) => {
 };
 
 // Get booking by ID
+// Get booking by ID
 exports.getBookingById = async (req, res) => {
   try {
     const { id } = req.params; // Booking ID from URL
@@ -213,10 +214,11 @@ exports.getBookingById = async (req, res) => {
         {
           model: Participant,
           where: { bookingId: id },
-          required: false // Allow bookings without participants
+          required: false, // Allow bookings without participants
         },
         { 
-          model: BookingDate 
+          model: BookingDate,
+          attributes: ['date', 'startTime', 'endTime'], // Include date, startTime, endTime
         },
         {
           model: Service,
@@ -231,11 +233,13 @@ exports.getBookingById = async (req, res) => {
                 'whatsNotIncluded', 
                 'recommendations', 
                 'whatsToBring', 
-                'coachInfo'
+                'coachInfo',
               ],
             },
             {
               model: Trainer,
+              through: { attributes: [] }, // Include Trainer through the ServiceTrainer join table
+              attributes: ['id', 'name', 'surname', 'avatar', 'hourlyRate', 'userRating'], // Only fetch necessary fields
             },
           ],
         },
@@ -254,15 +258,21 @@ exports.getBookingById = async (req, res) => {
     // Sort and keep the most recent date
     const validDates = booking.BookingDates.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, 1);
 
+    // Extract the associated trainer for this booking through the service
+    const selectedTrainer = booking.Service?.Trainers?.[0] || null; // Select the first trainer
+
+    // Send the response with all required fields, including the date, startTime, endTime, and trainer
     res.status(200).json({
       ...booking.toJSON(),
       BookingDates: validDates, // Return the most recent valid date
-      Participants: validParticipants // Return participants only if they exist
+      Participants: validParticipants, // Return participants only if they exist
+      Trainer: selectedTrainer, // Return the trainer associated with the service
     });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 };
+
 
 exports.editBooking = async (req, res) => {
   try {
