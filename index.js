@@ -10,7 +10,7 @@ const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
 const jwt = require('jsonwebtoken');
-const config = require('./config/config'); // Ensure this path is correct
+const jtwConfig = require('./config/jwtconf'); // Ensure this path is correct
 
 // Import Routes
 const authRoutes = require('./routes/authRoutes');
@@ -31,11 +31,16 @@ const server = http.createServer(app);
 // Initialize Socket.IO
 const io = socketIO(server, {
   cors: {
-    origin: 'http://localhost:4200', // Update to your frontend URL
+    origin: [
+      'http://localhost:4200',       // Angular development server
+      'capacitor://localhost',       // Default Capacitor origin for mobile apps
+      'http://localhost',            // Localhost for additional testing
+    ],
     methods: ['GET', 'POST'],
     credentials: true,
   },
 });
+
 
 // Ensure the uploads directory exists
 const uploadDir = path.join(__dirname, 'uploads');
@@ -79,7 +84,7 @@ io.use((socket, next) => {
   const token = socket.handshake.query.token;
 
   if (token) {
-    jwt.verify(token, config.jwtSecret, (err, decoded) => {
+    jwt.verify(token, jtwConfig.jwtSecret, (err, decoded) => {
       if (err) {
         console.log('Socket authentication error:', err.message);
         return next(new Error('Authentication error'));
