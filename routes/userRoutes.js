@@ -131,6 +131,6 @@ router.put(
 
 router.get('/user/:userId/preferences/email-notifications', authenticateJWT, userController.getEmailNotifications);
 
-router.post('/send-test-sms', userController.sendTestSms);
+
 
 module.exports = router;
