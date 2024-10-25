@@ -112,4 +112,5 @@ PaymentInfo.belongsTo(User);
 User.hasOne(UserPreferences, { onDelete: 'CASCADE' });
 UserPreferences.belongsTo(User);
 
+
 module.exports = User;

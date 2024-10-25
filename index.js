@@ -16,6 +16,9 @@ const locationRoutes = require('./routes/locationRoutes');
 // Import Sequelize instance
 const sequelize = require('./config/sequelize');
 
+// Import and initialize the cron job
+require('./cronJobs/bookingReminder'); // Add this line to start the cron job
+
 // Initialize Express app
 const app = express();
 const PORT = process.env.PORT || 3000;
