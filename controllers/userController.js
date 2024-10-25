@@ -12,7 +12,6 @@ const MeetingPoint = require('../models/UserProfile/MeetingPoint');
 const UserDetails = require('../models/UserProfile/UserDetails');
 const PaymentInfo = require('../models/UserProfile/PaymentInfo');
 const UserPreferences = require('../models/UserProfile/UserPreferences');
-const twilioClient = require('../config/twilioClient'); // Adjust the path if necessary
 
 
 // Configure multer for file upload
@@ -1212,27 +1211,6 @@ exports.getUserPhoneNumber = async (req, res) => {
   }
 };
 
-exports.sendTestSms = async (req, res) => {
-  const { to, message } = req.body;
-
-  // Basic validation
-  if (!to || !message) {
-    return res.status(400).json({ success: false, error: 'Both "to" and "message" fields are required.' });
-  }
-
-  try {
-    const sms = await twilioClient.messages.create({
-      body: message,
-      from: process.env.TWILIO_PHONE_NUMBER, // Ensure this is set in your .env file
-      to: to,
-    });
-
-    res.status(200).json({ success: true, sid: sms.sid });
-  } catch (error) {
-    console.error('Twilio SMS Error:', error);
-    res.status(500).json({ success: false, error: error.message });
-  }
-};
 
 
 
