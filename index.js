@@ -1,8 +1,16 @@
+// app.js
+
+require('dotenv').config(); // Load environment variables
+
 const express = require('express');
+const http = require('http');
+const socketIO = require('socket.io');
 const bodyParser = require('body-parser');
 const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
+const jwt = require('jsonwebtoken');
+const config = require('./config/config'); // Ensure this path is correct
 
 // Import Routes
 const authRoutes = require('./routes/authRoutes');
@@ -16,12 +24,18 @@ const locationRoutes = require('./routes/locationRoutes');
 // Import Sequelize instance
 const sequelize = require('./config/sequelize');
 
-// Import and initialize the cron job
-require('./cronJobs/bookingReminder'); // Add this line to start the cron job
-
-// Initialize Express app
+// Initialize Express app and HTTP server
 const app = express();
-const PORT = process.env.PORT || 3000;
+const server = http.createServer(app);
+
+// Initialize Socket.IO
+const io = socketIO(server, {
+  cors: {
+    origin: 'http://localhost:4200', // Update to your frontend URL
+    methods: ['GET', 'POST'],
+    credentials: true,
+  },
+});
 
 // Ensure the uploads directory exists
 const uploadDir = path.join(__dirname, 'uploads');
@@ -44,13 +58,13 @@ sequelize.authenticate()
   });
 
 // Routes
-app.use('/auth', authRoutes);  // Authentication routes
-app.use('/api', userRoutes);  // User routes
-app.use('/countries', locationRoutes);  // Location routes
-app.use('/api/services', serviceRoutes);  // Service routes
-app.use('/api', bookingRoutes);  // Booking routes
-app.use('/api/trainers', trainerRoutes);  // Trainer routes
-app.use('/api', categoryRoutes);  // Category routes
+app.use('/auth', authRoutes);        // Authentication routes
+app.use('/api', userRoutes);         // User routes
+app.use('/countries', locationRoutes); // Location routes
+app.use('/api/services', serviceRoutes); // Service routes
+app.use('/api', bookingRoutes);      // Booking routes
+app.use('/api/trainers', trainerRoutes); // Trainer routes
+app.use('/api', categoryRoutes);     // Category routes
 
 // Serve static files from the uploads directory
 app.use('/uploads', express.static(uploadDir));
@@ -60,7 +74,49 @@ app.get('/', (req, res) => {
   res.send('Welcome to the Express App!');
 });
 
+// Socket.IO authentication middleware
+io.use((socket, next) => {
+  const token = socket.handshake.query.token;
+
+  if (token) {
+    jwt.verify(token, config.jwtSecret, (err, decoded) => {
+      if (err) {
+        console.log('Socket authentication error:', err.message);
+        return next(new Error('Authentication error'));
+      } else {
+        socket.userId = decoded.id;
+        console.log(`Authenticated user ${socket.userId} via Socket.IO`);
+        next();
+      }
+    });
+  } else {
+    console.log('No token provided for Socket.IO connection');
+    return next(new Error('Authentication error'));
+  }
+});
+
+// Socket.IO connection handling
+io.on('connection', (socket) => {
+  console.log(`User ${socket.userId} connected via Socket.IO`);
+
+  // Join user-specific room
+  socket.join(`user_${socket.userId}`);
+  console.log(`User ${socket.userId} joined room: user_${socket.userId}`);
+
+  socket.on('disconnect', () => {
+    console.log(`User ${socket.userId} disconnected from Socket.IO`);
+  });
+});
+
+// Import and initialize the cron job after Socket.IO is set up
+const initializeCronJob = require('./cronJobs/bookingReminder');
+initializeCronJob(io);
+
 // Start the server
-app.listen(PORT, () => {
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => {
   console.log(`Server is running on http://localhost:${PORT}`);
 });
+
+// Export the app and io for use in other modules
+module.exports = { app, io };
