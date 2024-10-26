@@ -7,20 +7,17 @@ const BookingDate = require('../models/Bookings/BookingDate');
 const Booking = require('../models/Bookings/Booking');
 const User = require('../models/User');
 const { Service } = require('../models/Services/Service');
-const { userNotifications } = require('../controllers/notificationController'); // Import the shared Map
+const { userNotifications } = require('../controllers/notificationController');
 
-// Helper function to send a message and store it in memory
 const sendNotification = (userId, message) => {
   console.log(`Sending message to User ID: ${userId} - ${message}`);
 
-  const userIdStr = userId.toString(); // Ensure userId is treated as a string
+  const userIdStr = userId.toString();
 
-  // Initialize user's notification array if it doesn't exist
   if (!userNotifications.has(userIdStr)) {
     userNotifications.set(userIdStr, []);
   }
 
-  // Add notification to user's list
   userNotifications.get(userIdStr).push({
     message,
     timestamp: moment().format('YYYY-MM-DD HH:mm:ss')
@@ -40,8 +37,8 @@ cron.schedule('* * * * *', async () => {
         date: today,
         startTime: {
           [Op.between]: [
-            now.format('HH:mm'),           // Current time
-            oneHourLater.format('HH:mm'),   // One hour from now
+            now.format('HH:mm'),
+            oneHourLater.format('HH:mm'),
           ],
         },
       },
@@ -53,21 +50,17 @@ cron.schedule('* * * * *', async () => {
       ],
     });
 
-    // Process each booking
     for (const bookingDate of upcomingBookings) {
       const booking = bookingDate.Booking;
-
-      // Fetch user and service details separately
       const user = await User.findByPk(booking.userId, {
         attributes: ['name'],
       });
       const service = await Service.findByPk(booking.serviceId, {
         attributes: ['name'],
       });
+
       const userName = user ? user.name : 'User';
       const bookingName = service ? service.name : 'Service';
-
-      // Calculate time left until the session
       const startDateTime = moment(`${bookingDate.date}T${bookingDate.startTime}`);
       const minutesLeft = Math.round(moment.duration(startDateTime.diff(now)).asMinutes());
 
