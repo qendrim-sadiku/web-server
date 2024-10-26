@@ -1,97 +1,75 @@
-// bookingReminder.js
+// cronJobs/bookingReminder.js
 
 const cron = require('node-cron');
+const moment = require('moment');
 const { Op } = require('sequelize');
-const moment = require('moment-timezone');
+const BookingDate = require('../models/Bookings/BookingDate');
+const Booking = require('../models/Bookings/Booking');
+const User = require('../models/User');
+const { Service } = require('../models/Services/Service');
+const { userNotifications } = require('../controllers/notificationController');
 
-const BookingDate = require('../models/Bookings/BookingDate'); 
-const Booking = require('../models/Bookings/Booking'); 
-const User = require('../models/User'); 
-const { Service } = require('../models/Services/Service'); 
+const sendNotification = (userId, message) => {
+  console.log(`Sending message to User ID: ${userId} - ${message}`);
 
-// Helper function to send a message via Socket.IO
-const sendNotification = (ioInstance, userId, notificationData) => {
-  // Emit the notification to the specific user room
-  ioInstance.to(`user_${userId}`).emit('bookingReminder', notificationData);
-  console.log(`Sending message to User ID: ${userId} - ${notificationData.message}`);
+  const userIdStr = userId.toString();
+
+  if (!userNotifications.has(userIdStr)) {
+    userNotifications.set(userIdStr, []);
+  }
+
+  userNotifications.get(userIdStr).push({
+    message,
+    timestamp: moment().format('YYYY-MM-DD HH:mm:ss')
+  });
 };
 
-// Function to initialize the cron job
-const initializeCronJob = (ioInstance) => {
-  // Cron job that runs every minute
-  cron.schedule('* * * * *', async () => {
-    try {
-      const timeZone = 'Europe/Zagreb'; // Croatia's Timezone
-      const now = moment().tz(timeZone);
-      const oneHourLater = now.clone().add(1, 'hour');
+// Cron job that runs every minute
+cron.schedule('* * * * *', async () => {
+  try {
+    const now = moment();
+    const oneHourLater = now.clone().add(1, 'hour');
+    const today = now.format('YYYY-MM-DD');
 
-      // Log the cron job execution time
-      console.log(`Cron job running at ${now.format('YYYY-MM-DD HH:mm:ss')} (${timeZone})`);
-
-      // Get upcoming bookings within the next hour for the current day
-      const upcomingBookings = await BookingDate.findAll({
-        where: {
-          date: now.format('YYYY-MM-DD'), // Only today's bookings
-          startTime: {
-            [Op.between]: [now.format('HH:mm:ss'), oneHourLater.format('HH:mm:ss')],
-          },
+    // Get bookings that start within the next hour
+    const upcomingBookings = await BookingDate.findAll({
+      where: {
+        date: today,
+        startTime: {
+          [Op.between]: [
+            now.format('HH:mm'),
+            oneHourLater.format('HH:mm'),
+          ],
         },
-        include: [
-          {
-            model: Booking,
-            attributes: ['id', 'userId', 'serviceId'],
-          },
-        ],
+      },
+      include: [
+        {
+          model: Booking,
+          attributes: ['userId', 'serviceId'],
+        },
+      ],
+    });
+
+    for (const bookingDate of upcomingBookings) {
+      const booking = bookingDate.Booking;
+      const user = await User.findByPk(booking.userId, {
+        attributes: ['name'],
+      });
+      const service = await Service.findByPk(booking.serviceId, {
+        attributes: ['name'],
       });
 
-      // Process each booking
-      for (const bookingDate of upcomingBookings) {
-        const booking = bookingDate.Booking;
+      const userName = user ? user.name : 'User';
+      const bookingName = service ? service.name : 'Service';
+      const startDateTime = moment(`${bookingDate.date}T${bookingDate.startTime}`);
+      const minutesLeft = Math.round(moment.duration(startDateTime.diff(now)).asMinutes());
 
-        if (!booking) {
-          console.warn(`No booking found for BookingDate ID: ${bookingDate.id}`);
-          continue;
-        }
-
-        // Fetch user and service details
-        const user = await User.findByPk(booking.userId, {
-          attributes: ['name'],
-        });
-        const service = await Service.findByPk(booking.serviceId, {
-          attributes: ['name'],
-        });
-
-        const userName = user ? user.name : 'User';
-        const bookingName = service ? service.name : 'Service';
-
-        // Calculate time left until the session
-        const startDateTime = moment.tz(`${bookingDate.date} ${bookingDate.startTime}`, 'YYYY-MM-DD HH:mm:ss', timeZone);
-        const minutesLeft = Math.round(moment.duration(startDateTime.diff(now)).asMinutes());
-
-        if (minutesLeft >= 0 && minutesLeft <= 60) {
-          const message = `Hello ${userName}, your session "${bookingName}" will start in ${minutesLeft} minutes.`;
-
-          const notificationData = {
-            message: message,
-            booking: {
-              id: booking.id,
-              serviceName: bookingName,
-              startTime: startDateTime.format('YYYY-MM-DD HH:mm:ss'),
-            },
-          };
-
-          // Send notification via Socket.IO
-          sendNotification(ioInstance, booking.userId, notificationData);
-        }
-      }
-
-      console.log(`Checked bookings at ${now.format('YYYY-MM-DD HH:mm:ss')} (${timeZone})`);
-    } catch (error) {
-      console.error('Error in cron job:', error);
+      // Send a reminder message only for bookings within 1 hour
+      const message = `Hello ${userName}, your session "${bookingName}" will start in ${minutesLeft} minutes.`;
+      sendNotification(booking.userId, message);
     }
-  });
-
-  console.log('Booking Reminder cron job initialized');
-};
-
-module.exports = initializeCronJob;
+    console.log(`Checked bookings at ${now.format('YYYY-MM-DD HH:mm:ss')}`);
+  } catch (error) {
+    console.error('Error in cron job:', error);
+  }
+});
