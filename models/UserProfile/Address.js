@@ -1,7 +1,6 @@
 const { DataTypes } = require('sequelize');
 const sequelize = require('../../config/sequelize');
 
-
 const Address = sequelize.define('Address', {
   country: {
     type: DataTypes.STRING,
@@ -20,8 +19,16 @@ const Address = sequelize.define('Address', {
     allowNull: true
   },
   zipCode: {
-    type: DataTypes.STRING, // Ensure this matches your schema
+    type: DataTypes.STRING,
     allowNull: true,
+  },
+  defaultAddress: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false,  // One address can be marked as default
+  },
+  instructions: {  // New property added
+    type: DataTypes.TEXT,
+    allowNull: true,  // Optional field
   },
   UserId: {
     type: DataTypes.INTEGER,

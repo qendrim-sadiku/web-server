@@ -1,7 +1,9 @@
+// MeetingPoint model
 const { DataTypes } = require('sequelize');
 const sequelize = require('../../config/sequelize');
+
 const MeetingPoint = sequelize.define('MeetingPoint', {
-  address: {
+  country: {
     type: DataTypes.STRING,
     allowNull: true
   },
@@ -13,13 +15,17 @@ const MeetingPoint = sequelize.define('MeetingPoint', {
     type: DataTypes.STRING,
     allowNull: true
   },
+  state: {
+    type: DataTypes.STRING,
+    allowNull: true
+  },
   zipCode: {
     type: DataTypes.STRING,
     allowNull: true
   },
-  state: {
-    type: DataTypes.STRING,
-    allowNull: true
+  defaultAddress: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false,  // Marking one meeting point as default
   },
   UserId: {
     type: DataTypes.INTEGER,
@@ -33,4 +39,5 @@ const MeetingPoint = sequelize.define('MeetingPoint', {
   timestamps: true,
   tableName: 'MeetingPoints'
 });
+
 module.exports = MeetingPoint;
