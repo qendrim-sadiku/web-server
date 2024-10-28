@@ -1,37 +1,42 @@
-// cronJobs/bookingReminder.js
-
 const cron = require('node-cron');
-const moment = require('moment');
+const moment = require('moment-timezone');
 const { Op } = require('sequelize');
 const BookingDate = require('../models/Bookings/BookingDate');
 const Booking = require('../models/Bookings/Booking');
 const User = require('../models/User');
 const { Service } = require('../models/Services/Service');
-const { userNotifications } = require('../controllers/notificationController');
-// Set your preferred timezone (e.g., 'Europe/London', 'America/New_York', etc.)
-const timezone = 'Europe/Berlin'; // Replace with your local timezone
+const Notification = require('../models/Notifications');
+const admin = require('../config/firebase'); // Import your Firebase Admin setup
 
-const sendNotification = (userId, message) => {
-  console.log(`Sending message to User ID: ${userId} - ${message}`);
+// Set your preferred timezone (e.g., 'Europe/Berlin')
+const timezone = 'Europe/Berlin';
 
-  const userIdStr = userId.toString();
+// Helper function to send FCM notifications
+const sendFCMNotification = async (userId, title, message) => {
+  try {
+    const user = await User.findByPk(userId, { attributes: ['fcmToken'] });
 
-  if (!userNotifications.has(userIdStr)) {
-    userNotifications.set(userIdStr, []);
+    if (user && user.fcmToken) {
+      const payload = {
+        notification: {
+          title,
+          body: message,
+        },
+      };
+
+      await admin.messaging().sendToDevice(user.fcmToken, payload);
+      console.log(`Notification sent to User ID: ${userId}`);
+    } else {
+      console.log(`No FCM token found for User ID: ${userId}`);
+    }
+  } catch (error) {
+    console.error('Error sending FCM notification:', error);
   }
-
-  userNotifications.get(userIdStr).push({
-    message,
-    timestamp: moment().format('YYYY-MM-DD HH:mm:ss')
-  });
 };
-
-
 
 // Cron job that runs every minute
 cron.schedule('* * * * *', async () => {
   try {
-    // Get the current time in the desired timezone
     const now = moment().tz(timezone);
     const oneHourLater = now.clone().add(1, 'hour');
     const today = now.format('YYYY-MM-DD');
@@ -44,8 +49,8 @@ cron.schedule('* * * * *', async () => {
         date: today,
         startTime: {
           [Op.between]: [
-            now.format('HH:mm'),           // Current time
-            oneHourLater.format('HH:mm'),  // One hour from now
+            now.format('HH:mm'),
+            oneHourLater.format('HH:mm'),
           ],
         },
       },
@@ -57,27 +62,34 @@ cron.schedule('* * * * *', async () => {
       ],
     });
 
-    // Process each booking as before
     for (const bookingDate of upcomingBookings) {
       const booking = bookingDate.Booking;
-
-      // Fetch user and service details separately
       const user = await User.findByPk(booking.userId, {
-        attributes: ['name'],
+        attributes: ['name', 'fcmToken'],
       });
       const service = await Service.findByPk(booking.serviceId, {
         attributes: ['name'],
       });
+
       const userName = user ? user.name : 'User';
       const bookingName = service ? service.name : 'Service';
-
-      // Calculate time left until the session
       const startDateTime = moment.tz(`${bookingDate.date}T${bookingDate.startTime}`, timezone);
       const minutesLeft = Math.round(moment.duration(startDateTime.diff(now)).asMinutes());
 
-      // Send a reminder message only for bookings within the time frame
+      const title = 'Upcoming Session Reminder';
       const message = `Hello ${userName}, your session "${bookingName}" will start in ${minutesLeft} minutes.`;
-      sendNotification(booking.userId, message);
+      const imageUrl = ''; // Optional: Add an image URL if needed
+
+      // Save the notification in the database
+      await Notification.create({
+        userId: booking.userId,
+        title,
+        message,
+        imageUrl,
+      });
+
+      // Send the notification via FCM
+      await sendFCMNotification(booking.userId, title, message);
     }
 
   } catch (error) {

@@ -9,6 +9,7 @@ const UserDetails = require('./UserProfile/UserDetails');
 const PaymentInfo = require('./UserProfile/PaymentInfo');
 const UserPreferences = require('./UserProfile/UserPreferences');
 
+
 const User = sequelize.define('User', {
   id: {
     type: DataTypes.INTEGER,
@@ -66,6 +67,10 @@ const User = sequelize.define('User', {
     allowNull: false,
     unique: {
       msg: 'Email already exists'
+    },
+    fcmToken: {
+      type: DataTypes.STRING,
+      allowNull: true,
     },
     validate: {
       notEmpty: {
