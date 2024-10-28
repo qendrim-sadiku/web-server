@@ -88,3 +88,4 @@ dist/
 
 # Ignore build directories
 build/
+config/aroit-firebase.json
