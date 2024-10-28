@@ -11,20 +11,21 @@ const admin = require('../config/firebase'); // Import your Firebase Admin setup
 // Set your preferred timezone (e.g., 'Europe/Berlin')
 const timezone = 'Europe/Berlin';
 
-// Helper function to send FCM notifications
 const sendFCMNotification = async (userId, title, message) => {
   try {
     const user = await User.findByPk(userId, { attributes: ['fcmToken'] });
 
     if (user && user.fcmToken) {
-      const payload = {
+      const messagePayload = {
+        token: user.fcmToken,
         notification: {
-          title,
+          title: title,
           body: message,
         },
       };
 
-      await admin.messaging().sendToDevice(user.fcmToken, payload);
+      // Send the notification
+      await admin.messaging().send(messagePayload);
       console.log(`Notification sent to User ID: ${userId}`);
     } else {
       console.log(`No FCM token found for User ID: ${userId}`);
@@ -33,6 +34,7 @@ const sendFCMNotification = async (userId, title, message) => {
     console.error('Error sending FCM notification:', error);
   }
 };
+
 
 // Cron job that runs every minute
 cron.schedule('* * * * *', async () => {

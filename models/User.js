@@ -62,16 +62,17 @@ const User = sequelize.define('User', {
     type: DataTypes.STRING,
     allowNull: true
   },
+  fcmToken: {
+    type: DataTypes.STRING,
+    allowNull: true,
+  },
   email: {
     type: DataTypes.STRING,
     allowNull: false,
     unique: {
       msg: 'Email already exists'
     },
-    fcmToken: {
-      type: DataTypes.STRING,
-      allowNull: true,
-    },
+   
     validate: {
       notEmpty: {
         msg: 'Email is required'
