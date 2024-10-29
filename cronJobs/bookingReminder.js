@@ -20,16 +20,16 @@ function isValidFCMToken(token) {
 }
 
 // Function to send FCM notification with detailed logging
-const sendFCMNotification = async (userId, title, message) => {
+const sendFCMNotification = async (id, title, message) => {
   try {
-    const user = await User.findByPk(userId, { attributes: ['fcmToken'] });
+    const user = await User.findByPk(id, { attributes: ['fcmToken'] });
 
     if (user && user.fcmToken) {
-      console.log(`User ID: ${userId} - Retrieved FCM Token: ${user.fcmToken}`);
+      console.log(`User ID: ${id} - Retrieved FCM Token: ${user.fcmToken}`);
 
       // Validate the FCM token structure before sending
       if (!isValidFCMToken(user.fcmToken)) {
-        console.error(`User ID: ${userId} - Invalid FCM Token Format: ${user.fcmToken}`);
+        console.error(`User ID: ${id} - Invalid FCM Token Format: ${user.fcmToken}`);
         return;
       }
 
@@ -41,16 +41,16 @@ const sendFCMNotification = async (userId, title, message) => {
         },
       };
 
-      console.log(`User ID: ${userId} - Notification Payload:`, messagePayload);
+      console.log(`User ID: ${id} - Notification Payload:`, messagePayload);
 
       // Send the notification
       const response = await admin.messaging().send(messagePayload);
-      console.log(`User ID: ${userId} - Notification sent successfully. Response: ${response}`);
+      console.log(`User ID: ${id} - Notification sent successfully. Response: ${response}`);
     } else {
-      console.log(`User ID: ${userId} - No FCM token found.`);
+      console.log(`User ID: ${id} - No FCM token found.`);
     }
   } catch (error) {
-    console.error(`User ID: ${userId} - Error sending FCM notification:`, error);
+    console.error(`User ID: ${id} - Error sending FCM notification:`, error);
   }
 };
 
