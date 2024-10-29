@@ -1473,3 +1473,27 @@ exports.updateEmailNotifications = async (req, res) => {
     res.status(500).json({ message: 'Failed to update email notifications preference.', error: error.message || error });
   }
 };
+
+
+// Update FCM Token
+exports.updateFcmToken = async (req, res) => {
+  const { userId, fcmToken } = req.body;
+
+  try {
+    if (!userId || !fcmToken) {
+      return res.status(400).json({ message: 'User ID and FCM token are required' });
+    }
+
+    const user = await User.findByPk(userId);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    await user.update({ fcmToken });
+
+    res.status(200).json({ message: 'FCM token updated successfully', fcmToken });
+  } catch (error) {
+    console.error('Error updating FCM token:', error);
+    res.status(500).json({ message: 'Failed to update FCM token', error });
+  }
+};

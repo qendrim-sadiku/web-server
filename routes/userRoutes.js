@@ -131,6 +131,7 @@ router.put(
 
 router.get('/user/:userId/preferences/email-notifications', authenticateJWT, userController.getEmailNotifications);
 
-
+// Add route to update FCM token
+router.put('/user/update-fcm-token', userController.updateFcmToken);
 
 module.exports = router;
