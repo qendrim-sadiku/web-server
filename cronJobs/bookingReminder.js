@@ -23,7 +23,7 @@ const sendFCMNotification = async (userId, title, message) => {
           body: message,
         },
       };
-
+      console.log(messagePayload);
       // Send the notification
       await admin.messaging().send(messagePayload);
       console.log(`Notification sent to User ID: ${userId}`);
