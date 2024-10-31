@@ -148,7 +148,7 @@ cron.schedule('* * * * *', async () => {
 
     lastNotificationTime = now;
 
-  } catch (error) {
+  } catch (error) { 
     console.error('Error in cron job:', error);
   }
 });
