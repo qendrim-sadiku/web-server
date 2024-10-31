@@ -3,17 +3,18 @@ const User = require('../models/User');
 const userNotifications = new Map(); // Shared in-memory storage using Map
 
 // Fetch notifications for a specific user from both in-memory and the database
-const getNotifications = async (req, res) => {
+const getUserNotifications = async (req, res) => {
   const userId = req.params.userId.toString(); // Ensure userId is treated as a string
 
   try {
     // Get notifications from the in-memory store
     const memoryNotifications = userNotifications.get(userId) || [];
 
-    // Get notifications from the database
+    // Get notifications from the database, including startTime
     const dbNotifications = await Notification.findAll({
       where: { userId },
       order: [['timestamp', 'DESC']],
+      attributes: ['id', 'userId', 'title', 'message', 'imageUrl', 'timestamp', 'isViewed', 'startTime'],
     });
 
     // Combine in-memory and database notifications
@@ -27,6 +28,7 @@ const getNotifications = async (req, res) => {
     res.status(500).json({ message: 'Error fetching notifications', error });
   }
 };
+
 
 // Add a notification for a specific user (for testing purposes)
 const addNotification = async (req, res) => {
@@ -70,6 +72,46 @@ const addNotification = async (req, res) => {
   }
 };
 
+
+const markNotificationAsViewed = async (req, res) => {
+  const notificationId = req.params.notificationId;
+
+  try {
+    const [updatedRows] = await Notification.update(
+      { isViewed: true },
+      { where: { id: notificationId } }
+    );
+
+    if (updatedRows === 0) {
+      return res.status(404).json({ message: 'Notification not found' });
+    }
+
+    res.json({ message: 'Notification marked as viewed' });
+  } catch (error) {
+    res.status(500).json({ message: 'Error marking notification as viewed', error });
+  }
+};
+
+const markAllNotificationsAsViewed = async (req, res) => {
+  const userId = req.params.userId;
+
+  try {
+    const [updatedRows] = await Notification.update(
+      { isViewed: true },
+      { where: { userId } }
+    );
+
+    if (updatedRows === 0) {
+      return res.status(404).json({ message: 'No notifications found for this user' });
+    }
+
+    res.json({ message: 'All notifications marked as viewed' });
+  } catch (error) {
+    res.status(500).json({ message: 'Error marking all notifications as viewed', error });
+  }
+};
+
+
 const saveFCMToken = async (req, res) => {
   const { userId, fcmToken } = req.body;
 
@@ -83,4 +125,5 @@ const saveFCMToken = async (req, res) => {
 };
 
 
-module.exports = { getNotifications, addNotification, userNotifications ,saveFCMToken};
+module.exports = { getUserNotifications, addNotification, userNotifications ,saveFCMToken, markNotificationAsViewed,
+  markAllNotificationsAsViewed};
