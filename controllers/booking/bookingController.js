@@ -7,7 +7,36 @@ const { Service } = require('../../models/Services/Service');
 const SubCategory = require('../../models/Category/SubCategory');
 const Category = require('../../models/Category/Category');
 const sequelize = require('../../config/sequelize');
+const moment = require('moment'); // Make sure you have moment.js installed
 
+// Helper function to update past bookings as completed
+const updatePastBookingsStatus = async () => {
+  const currentDate = new Date();
+
+  // Find all bookings that are still active and have past booking dates
+  const activeBookings = await Booking.findAll({
+    where: { status: 'active' }, // Only check active bookings
+    include: [
+      {
+        model: BookingDate,
+        attributes: ['date', 'endTime'],
+      },
+    ],
+  });
+
+  for (let booking of activeBookings) {
+    const hasPastDate = booking.BookingDates.some(bookingDate => {
+      const bookingDateTime = new Date(`${bookingDate.date}T${bookingDate.endTime}`);
+      return bookingDateTime < currentDate;
+    });
+
+    if (hasPastDate) {
+      // Update the status to 'completed'
+      booking.status = 'completed';
+      await booking.save();
+    }
+  }
+};
 
 
 // Helper function to convert 12-hour time format to 24-hour format
@@ -143,6 +172,9 @@ exports.createBooking = async (req, res) => {
 // Get all bookings of a user
 exports.getAllBookingsOfUser = async (req, res) => {
   try {
+    // Update past bookings before fetching
+    await updatePastBookingsStatus();
+
     const { userId } = req.params;
     const bookings = await Booking.findAll({
       where: { userId },
@@ -150,18 +182,18 @@ exports.getAllBookingsOfUser = async (req, res) => {
         { model: Participant },
         {
           model: BookingDate,
-          attributes: ['date', 'startTime', 'endTime', 'createdAt'], // Ensure createdAt is included for filtering
+          attributes: ['date', 'startTime', 'endTime', 'createdAt'],
         },
         {
           model: Service,
           attributes: ['id', 'name', 'description', 'image', 'duration', 'hourlyRate', 'level'],
           include: [
             {
-              model: ServiceDetails, // Include service details
+              model: ServiceDetails,
               attributes: ['fullDescription', 'highlights', 'whatsIncluded', 'whatsNotIncluded', 'recommendations', 'coachInfo'],
             },
             {
-              model: Trainer, // Include trainers if needed
+              model: Trainer,
             },
             {
               model: SubCategory,
@@ -178,17 +210,13 @@ exports.getAllBookingsOfUser = async (req, res) => {
       ],
     });
 
-    // Filter bookings to remove older BookingDate entries
     const filteredBookings = bookings.map(booking => {
-      // Find the most recent createdAt date in the BookingDates array
       const latestCreatedAt = booking.BookingDates.reduce((latest, date) => {
         return new Date(date.createdAt) > new Date(latest.createdAt) ? date : latest;
       }, booking.BookingDates[0]).createdAt;
 
-      // Filter the BookingDates to keep only the ones that match the latest createdAt
       const validDates = booking.BookingDates.filter(date => date.createdAt === latestCreatedAt);
 
-      // Return the booking with only the valid dates
       return {
         ...booking.toJSON(),
         BookingDates: validDates,
@@ -200,6 +228,7 @@ exports.getAllBookingsOfUser = async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 };
+
 
 // Get booking by ID
 // Get booking by ID
@@ -609,5 +638,90 @@ exports.rebookService = async (req, res) => {
   } catch (error) {
     res.status(500).json({ error: error.message });
     console.error(error);
+  }
+};
+
+
+exports.getFilteredBookingsOfUser = async (req, res) => {
+  try {
+    // Update past bookings before fetching
+    await updatePastBookingsStatus();
+
+    const { userId } = req.params;
+    const { categoryOrSubcategory, startDate, endDate } = req.query;
+
+    // Fetch bookings of the user
+    const bookings = await Booking.findAll({
+      where: { userId },
+      include: [
+        { model: Participant },
+        {
+          model: BookingDate,
+          attributes: ['date', 'startTime', 'endTime', 'createdAt'],
+        },
+        {
+          model: Service,
+          attributes: ['id', 'name', 'description', 'image', 'duration', 'hourlyRate', 'level'],
+          include: [
+            {
+              model: ServiceDetails,
+              attributes: [
+                'fullDescription',
+                'highlights',
+                'whatsIncluded',
+                'whatsNotIncluded',
+                'recommendations',
+                'coachInfo',
+              ],
+            },
+            {
+              model: Trainer,
+            },
+            {
+              model: SubCategory,
+              attributes: ['id', 'name'],
+              include: [
+                {
+                  model: Category,
+                  attributes: ['id', 'name'],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+
+    const filteredBookings = bookings.filter((booking) => {
+      let matches = true;
+
+      // Check category or subcategory filter
+      if (categoryOrSubcategory) {
+        const matchesCategoryOrSubcategory =
+          booking.Service.SubCategory.name === categoryOrSubcategory ||
+          booking.Service.SubCategory.Category.name === categoryOrSubcategory;
+        matches = matches && matchesCategoryOrSubcategory;
+      }
+
+      // Check date filter
+      if (startDate && endDate) {
+        const start = moment(startDate, 'YYYY-MM-DD').startOf('day');
+        const end = moment(endDate, 'YYYY-MM-DD').endOf('day');
+
+        const matchesDate = booking.BookingDates.some((bookingDate) => {
+          const bookingMoment = moment(bookingDate.date, 'YYYY-MM-DD').startOf('day');
+          return bookingMoment.isBetween(start, end, 'day', '[]');
+        });
+
+        matches = matches && matchesDate;
+      }
+
+      return matches;
+    });
+
+    res.status(200).json(filteredBookings);
+  } catch (error) {
+    console.error('Error fetching filtered bookings:', error);
+    res.status(500).json({ error: error.message });
   }
 };

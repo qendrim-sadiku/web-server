@@ -11,4 +11,7 @@ router.post('/bookings/:bookingId/rebook', bookingController.rebookService);
 // Route to extend a session (modify only the end time)
 router.put('/bookings/extend-session/:id', bookingController.extendSession);
 
+router.get('/bookings/user/:userId/filter', bookingController.getFilteredBookingsOfUser);
+
+
 module.exports = router;
