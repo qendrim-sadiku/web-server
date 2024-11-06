@@ -8,6 +8,7 @@ const SubCategory = require('../../models/Category/SubCategory');
 const Category = require('../../models/Category/Category');
 const sequelize = require('../../config/sequelize');
 const moment = require('moment'); // Make sure you have moment.js installed
+const { Op } = require('sequelize'); // Import Op from Sequelize
 
 // Helper function to update past bookings as completed
 const updatePastBookingsStatus = async () => {
@@ -722,6 +723,81 @@ exports.getFilteredBookingsOfUser = async (req, res) => {
     res.status(200).json(filteredBookings);
   } catch (error) {
     console.error('Error fetching filtered bookings:', error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
+
+// Method to get user bookings based on selected dates
+exports.getUserBookingsByDates = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { dates } = req.body; // Expecting an array of date strings in 'YYYY-MM-DD' format
+
+    // Validate that dates are provided
+    if (!dates || !Array.isArray(dates) || dates.length === 0) {
+      return res.status(400).json({ error: 'No dates provided' });
+    }
+
+    // Fetch bookings that match the userId and have BookingDates matching the selected dates
+    const bookings = await Booking.findAll({
+      where: { userId },
+      include: [
+        {
+          model: BookingDate,
+          where: {
+            date: {
+              [Op.in]: dates,
+            },
+          },
+          attributes: ['date', 'startTime', 'endTime', 'createdAt'],
+        },
+        {
+          model: Participant,
+        },
+        {
+          model: Service,
+          attributes: [
+            'id',
+            'name',
+            'description',
+            'image',
+            'duration',
+            'hourlyRate',
+            'level',
+          ],
+          include: [
+            {
+              model: ServiceDetails,
+              attributes: [
+                'fullDescription',
+                'highlights',
+                'whatsIncluded',
+                'whatsNotIncluded',
+                'recommendations',
+                'coachInfo',
+              ],
+            },
+            {
+              model: Trainer,
+            },
+            {
+              model: SubCategory,
+              attributes: ['id', 'name'],
+              include: [
+                {
+                  model: Category,
+                  attributes: ['id', 'name'],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+
+    res.status(200).json(bookings);
+  } catch (error) {
     res.status(500).json({ error: error.message });
   }
 };

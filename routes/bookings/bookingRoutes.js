@@ -12,6 +12,7 @@ router.post('/bookings/:bookingId/rebook', bookingController.rebookService);
 router.put('/bookings/extend-session/:id', bookingController.extendSession);
 
 router.get('/bookings/user/:userId/filter', bookingController.getFilteredBookingsOfUser);
+router.post('/bookings/user/:userId/dates', bookingController.getUserBookingsByDates);
 
 
 module.exports = router;
