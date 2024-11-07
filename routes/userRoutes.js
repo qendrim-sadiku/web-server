@@ -134,4 +134,16 @@ router.get('/user/:userId/preferences/email-notifications', authenticateJWT, use
 // Add route to update FCM token
 router.put('/user/update-fcm-token', userController.updateFcmToken);
 
+// Add to browsing history
+router.post('/user/browsing-history', userController.addBrowsingHistory);
+
+// Get browsing history for a user
+router.get('/user/browsing-history/:userId', userController.getBrowsingHistory);
+
+// Remove specific item from browsing history
+router.delete('/user/browsing-history/item', userController.removeBrowsingHistoryItem);
+
+// Clear all browsing history for a user
+router.delete('/user/browsing-history/:userId', userController.clearBrowsingHistory);
+
 module.exports = router;

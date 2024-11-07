@@ -12,11 +12,12 @@ const MeetingPoint = require('../models/UserProfile/MeetingPoint');
 const UserDetails = require('../models/UserProfile/UserDetails');
 const PaymentInfo = require('../models/UserProfile/PaymentInfo');
 const UserPreferences = require('../models/UserProfile/UserPreferences');
-
+const BrowsingHistory = require('../models/BrowsingHistory');
+const {Service} = require('../models/Services/Service');
 
 // Configure multer for file upload
 const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
+  destination: function (req, file, cb) { 
     cb(null, 'uploads/'); // Directory to save uploaded files
   },
   filename: function (req, file, cb) {
@@ -1495,5 +1496,92 @@ exports.updateFcmToken = async (req, res) => {
   } catch (error) {
     console.error('Error updating FCM token:', error);
     res.status(500).json({ message: 'Failed to update FCM token', error });
+  }
+};
+
+
+
+// Add a service to browsing history
+exports.addBrowsingHistory = async (req, res) => {
+  const { userId, serviceId } = req.body;
+
+  try {
+    if (!userId || !serviceId) {
+      return res.status(400).json({ message: 'User ID and Service ID are required' });
+    }
+
+    const service = await Service.findByPk(serviceId);
+    if (!service) {
+      return res.status(404).json({ message: 'Service not found' });
+    }
+
+    const browsingHistoryEntry = await BrowsingHistory.create({
+      userId,
+      serviceId,
+      viewedAt: new Date()
+    });
+
+    res.status(201).json({
+      message: 'Browsing history entry created successfully',
+      data: browsingHistoryEntry
+    });
+  } catch (error) {
+    console.error('Error adding browsing history:', error);
+    res.status(500).json({ message: 'Failed to add browsing history', error });
+  }
+};
+
+// Get browsing history for a user
+exports.getBrowsingHistory = async (req, res) => {
+  const userId = req.params.userId;
+
+  try {
+    const history = await BrowsingHistory.findAll({
+      where: { userId },
+      include: [{ model: Service, attributes: ['id', 'name', 'description', 'image'] }],
+      order: [['viewedAt', 'DESC']]
+    });
+
+    res.status(200).json({
+      message: 'Browsing history fetched successfully',
+      data: history
+    });
+  } catch (error) {
+    console.error('Error fetching browsing history:', error);
+    res.status(500).json({ message: 'Failed to fetch browsing history', error });
+  }
+};
+
+// Remove a specific item from browsing history
+exports.removeBrowsingHistoryItem = async (req, res) => {
+  const { userId, historyId } = req.body;
+
+  try {
+    const historyItem = await BrowsingHistory.findOne({
+      where: { id: historyId, userId }
+    });
+
+    if (!historyItem) {
+      return res.status(404).json({ message: 'Browsing history item not found' });
+    }
+
+    await historyItem.destroy();
+    res.status(200).json({ message: 'Browsing history item removed successfully' });
+  } catch (error) {
+    console.error('Error removing browsing history item:', error);
+    res.status(500).json({ message: 'Failed to remove browsing history item', error });
+  }
+};
+
+// Clear all browsing history for a user
+exports.clearBrowsingHistory = async (req, res) => {
+  const userId = req.params.userId;
+
+  try {
+    await BrowsingHistory.destroy({ where: { userId } });
+    res.status(200).json({ message: 'Browsing history cleared successfully' });
+  } catch (error) {
+    console.error('Error clearing browsing history:', error);
+    res.status(500).json({ message: 'Failed to clear browsing history', error });
   }
 };

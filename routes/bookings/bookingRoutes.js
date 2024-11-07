@@ -13,6 +13,8 @@ router.put('/bookings/extend-session/:id', bookingController.extendSession);
 
 router.get('/bookings/user/:userId/filter', bookingController.getFilteredBookingsOfUser);
 router.post('/bookings/user/:userId/dates', bookingController.getUserBookingsByDates);
+// Route to get booking counts for multiple services
+router.post('/bookings/counts', bookingController.getBookingCountsForServices);
 
 
 module.exports = router;

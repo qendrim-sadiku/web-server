@@ -801,3 +801,28 @@ exports.getUserBookingsByDates = async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 };
+
+
+exports.getBookingCountsForServices = async (req, res) => {
+  try {
+    const { serviceIds } = req.body;
+
+    // Fetch booking counts for each service ID
+    const counts = await Booking.findAll({
+      where: { serviceId: serviceIds },
+      attributes: ['serviceId', [sequelize.fn('COUNT', sequelize.col('id')), 'count']],
+      group: ['serviceId']
+    });
+
+    // Transform data to make it easy to work with on the frontend
+    const result = counts.map(count => ({
+      serviceId: count.serviceId,
+      count: count.get('count')
+    }));
+
+    res.status(200).json(result);
+  } catch (error) {
+    console.error('Error fetching booking counts:', error);
+    res.status(500).json({ message: 'Failed to fetch booking counts', error });
+  }
+};
