@@ -15,6 +15,8 @@ router.get('/bookings/user/:userId/filter', bookingController.getFilteredBooking
 router.post('/bookings/user/:userId/dates', bookingController.getUserBookingsByDates);
 // Route to get booking counts for multiple services
 router.post('/bookings/counts', bookingController.getBookingCountsForServices);
+// Route to remove a booking
+router.delete('/bookings/:id', bookingController.removeBooking);
 
 
 module.exports = router;

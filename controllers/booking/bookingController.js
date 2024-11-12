@@ -826,3 +826,25 @@ exports.getBookingCountsForServices = async (req, res) => {
     res.status(500).json({ message: 'Failed to fetch booking counts', error });
   }
 };
+
+
+// Remove a booking
+exports.removeBooking = async (req, res) => {
+  try {
+    const { id } = req.params; // Extract the booking ID from the request parameters
+
+    // Find the booking by its ID
+    const booking = await Booking.findByPk(id);
+    if (!booking) {
+      return res.status(404).json({ message: 'Booking not found' }); // Return 404 if booking not found
+    }
+
+    // Delete the booking
+    await booking.destroy();
+
+    res.status(200).json({ message: 'Booking removed successfully' }); // Return success message
+  } catch (error) {
+    res.status(500).json({ error: error.message }); // Handle any errors
+  }
+};
+

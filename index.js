@@ -13,6 +13,7 @@ const bookingRoutes = require('./routes/bookings/bookingRoutes');
 const trainerRoutes = require('./routes/trainer/trainerRoutes');
 const locationRoutes = require('./routes/locationRoutes');
 const notificationRoutes = require('./routes/notifications'); // Import the notification routes
+const userInterestRoutes = require('./routes/userInterestRouter');
 
 // Import Sequelize instance
 const sequelize = require('./config/sequelize');
@@ -53,6 +54,9 @@ app.use('/api', bookingRoutes);  // Booking routes
 app.use('/api/trainers', trainerRoutes);  // Trainer routes
 app.use('/api', categoryRoutes);  // Category routes
 app.use('/api/notifications', notificationRoutes); // Register the notification routes
+app.use('/api/interests', userInterestRoutes);
+
+
 
 // Serve static files from the uploads directory
 app.use('/uploads', express.static(uploadDir));

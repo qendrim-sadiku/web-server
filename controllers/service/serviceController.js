@@ -764,6 +764,8 @@ exports.getMultipleServicesByIds = async (req, res) => {
     const result = services.map((service) => ({
       id: service.id,
       name: service.name,
+      type: service.type, // Add type here
+
       description: service.description,
       image: service.image,
       duration: service.duration,
