@@ -17,6 +17,8 @@ router.post('/bookings/user/:userId/dates', bookingController.getUserBookingsByD
 router.post('/bookings/counts', bookingController.getBookingCountsForServices);
 // Route to remove a booking
 router.delete('/bookings/:id', bookingController.removeBooking);
+router.put('/bookings/rate/:id', bookingController.rateBooking);
+
 
 
 module.exports = router;

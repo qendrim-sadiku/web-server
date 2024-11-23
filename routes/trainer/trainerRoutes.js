@@ -23,5 +23,10 @@ router.get('/availability/:id', trainerController.getTrainerAvailability);
 
 router.get('/:trainerId/bookings-count', trainerController.getTrainerBookingsCount);
 
+// Route for checking availability of multiple trainers
+router.post('/availability/multiple', trainerController.getMultipleTrainersAvailability);
+
+
+
 
 module.exports = router;

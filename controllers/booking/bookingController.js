@@ -231,15 +231,17 @@ exports.getAllBookingsOfUser = async (req, res) => {
 };
 
 
-// Get booking by ID
-// Get booking by ID
 exports.getBookingById = async (req, res) => {
   try {
-    const { id } = req.params; // Booking ID from URL
+    const { id } = req.params; // Booking ID from the URL
+    const { userId } = req.query; // User ID from the query parameters
 
-    // Find the booking by id
+    // Find the booking by id and userId
     const booking = await Booking.findOne({
-      where: { id }, // Fetch the booking by its ID
+      where: {
+        id, // Booking ID
+        userId, // Filter by user ID
+      },
       include: [
         {
           model: Participant,
@@ -302,6 +304,7 @@ exports.getBookingById = async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 };
+
 
 
 exports.editBooking = async (req, res) => {
@@ -848,3 +851,29 @@ exports.removeBooking = async (req, res) => {
   }
 };
 
+
+exports.rateBooking = async (req, res) => {
+  try {
+    const { id } = req.params; // Booking ID from URL
+    const { rating, review } = req.body; // Rating and review data from the request body
+
+    if (!rating || rating < 1 || rating > 5) {
+      return res.status(400).json({ message: 'Invalid rating. Must be between 1 and 5.' });
+    }
+
+    // Find the booking by ID
+    const booking = await Booking.findByPk(id);
+    if (!booking) {
+      return res.status(404).json({ message: 'Booking not found' });
+    }
+
+    // Update the rating and review fields
+    booking.rating = rating;
+    booking.review = review || null; // Optional review
+    await booking.save();
+
+    res.status(200).json({ message: 'Rating and review updated successfully', booking });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};

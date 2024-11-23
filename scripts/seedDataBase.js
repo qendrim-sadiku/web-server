@@ -304,16 +304,11 @@ const createSampleServices = async () => {
                     duration: 60,
                     level: faker.helpers.arrayElement(['Beginner', 'Advanced', 'Pro']),
                     subCategoryId: subCategory.id,
-
-                    hourlyRate: parseFloat(faker.commerce.price({ min: 30, max: 150, dec: 2 })),
-                    image: faker.image.imageUrl(undefined, undefined, 'business', true, true)
-
                     hourlyRate: serviceType.pricePerHour, // Use the price per hour from the service type
-                    image: faker.image.url(640, 480, 'service', true, true),
+                    image: faker.image.imageUrl(undefined, undefined, 'business', true, true),
                     defaultTrainerId: defaultTrainer.id,
                     serviceTypeId: serviceType.id, // Assign service type
                     type: serviceTypeValue // Added type field
-
                 });
 
                 // Add service details with images
@@ -326,8 +321,8 @@ const createSampleServices = async () => {
                     trainer.yearsOfExperience >= 3 // Example: filtering trainers with at least 3 years of experience
                 );
 
-                // Ensure at least 10 trainers
-                const numberOfTrainersNeeded = 10 - matchingTrainers.length;
+                // Ensure at least 2 trainers
+                const numberOfTrainersNeeded = 2 - matchingTrainers.length;
                 if (numberOfTrainersNeeded > 0) {
                     // Create additional trainers if not enough available
                     for (let j = 0; j < numberOfTrainersNeeded; j++) {
@@ -352,7 +347,7 @@ const createSampleServices = async () => {
                     }
                 }
 
-                for (const trainer of matchingTrainers.slice(0, 10)) {
+                for (const trainer of matchingTrainers.slice(0, 2)) { // Assign only 2 trainers per service
                     await ServiceTrainer.create({
                         serviceId: service.id,
                         trainerId: trainer.id
@@ -367,6 +362,7 @@ const createSampleServices = async () => {
         throw error;
     }
 };
+
 
 // Function to create sample reviews for each trainer
 const createSampleReviews = async () => {

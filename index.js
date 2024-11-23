@@ -3,7 +3,8 @@ const bodyParser = require('body-parser');
 const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
-
+const swaggerUi = require('swagger-ui-express');
+const swaggerDocs = require('./config/swagger'); // Import the Swagger docs
 // Import Routes
 const authRoutes = require('./routes/authRoutes');
 const userRoutes = require('./routes/userRoutes');
@@ -45,6 +46,9 @@ sequelize.authenticate()
     console.error('Unable to connect to the database:', err);
   });
 
+// Swagger documentation
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocs));
+
 // Routes
 app.use('/auth', authRoutes);  // Authentication routes
 app.use('/api', userRoutes);  // User routes
@@ -54,7 +58,7 @@ app.use('/api', bookingRoutes);  // Booking routes
 app.use('/api/trainers', trainerRoutes);  // Trainer routes
 app.use('/api', categoryRoutes);  // Category routes
 app.use('/api/notifications', notificationRoutes); // Register the notification routes
-app.use('/api/interests', userInterestRoutes);
+app.use('/api/', userInterestRoutes);
 
 
 
@@ -69,6 +73,8 @@ app.get('/', (req, res) => {
 // Start the server
 app.listen(PORT, () => {
   console.log(`Server is running on http://localhost:${PORT}`);
+  console.log(`Swagger docs available at http://localhost:${PORT}/api-docs`);
+
 });
 
 module.exports = app; // Export the app for WebSocket connection if needed

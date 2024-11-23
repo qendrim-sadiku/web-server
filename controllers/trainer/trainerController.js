@@ -405,3 +405,108 @@ exports.getTrainerAvailability = async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 };
+
+
+exports.getMultipleTrainersAvailability = async (req, res) => {
+  const { trainerIds, date } = req.body;
+
+  if (!date) {
+    return res.status(400).json({ message: 'Date is required' });
+  }
+
+  try {
+    const trainers = await Trainer.findAll({
+      where: { id: trainerIds },
+      include: [
+        {
+          model: Booking,
+          include: [
+            {
+              model: BookingDate,
+              attributes: ['date', 'startTime', 'endTime'],
+            },
+          ],
+        },
+      ],
+    });
+
+    if (!trainers || trainers.length === 0) {
+      return res.status(404).json({ message: 'No trainers found' });
+    }
+
+    const availability = {};
+
+    trainers.forEach(trainer => {
+      // Generate all time slots for the day with AM/PM
+      const generateHourlySlots = (start, end) => {
+        const slots = [];
+        let [startHours, startMinutes] = start.split(':').map(Number);
+        let [endHours] = end.split(':').map(Number);
+
+        while (startHours < endHours) {
+          const startTime = `${(startHours % 12 || 12)}:${startMinutes
+            .toString()
+            .padStart(2, '0')} ${startHours >= 12 ? 'PM' : 'AM'}`;
+          const endTime = `${((startHours + 1) % 12 || 12)}:${startMinutes
+            .toString()
+            .padStart(2, '0')} ${startHours + 1 >= 12 ? 'PM' : 'AM'}`;
+
+          slots.push({ startTime, endTime });
+          startHours++;
+        }
+
+        return slots;
+      };
+
+      let availabilitySelectedDate = generateHourlySlots('08:00', '20:00').map(slot => ({
+        startTime: slot.startTime,
+        endTime: slot.endTime,
+        isAvailable: true, // Default to true
+      }));
+
+      // Mark unavailable slots
+      trainer.Bookings.forEach(booking => {
+        booking.BookingDates.forEach(bookingDate => {
+          if (bookingDate.date === date) {
+            availabilitySelectedDate = availabilitySelectedDate.map(slot => {
+              const [slotStartHours, slotStartMinutes] = slot.startTime.split(/[: ]/).map(Number);
+              const [slotEndHours, slotEndMinutes] = slot.endTime.split(/[: ]/).map(Number);
+              const [bookedStartHours, bookedStartMinutes] = bookingDate.startTime
+                .split(':')
+                .map(Number);
+              const [bookedEndHours, bookedEndMinutes] = bookingDate.endTime.split(':').map(Number);
+
+              const slotStartTime = new Date().setHours(
+                slotStartHours + (slot.startTime.includes('PM') && slotStartHours !== 12 ? 12 : 0),
+                slotStartMinutes
+              );
+              const slotEndTime = new Date().setHours(
+                slotEndHours + (slot.endTime.includes('PM') && slotEndHours !== 12 ? 12 : 0),
+                slotEndMinutes
+              );
+              const bookedStartTime = new Date().setHours(bookedStartHours, bookedStartMinutes);
+              const bookedEndTime = new Date().setHours(bookedEndHours, bookedEndMinutes);
+
+              if (slotStartTime < bookedEndTime && slotEndTime > bookedStartTime) {
+                return { ...slot, isAvailable: false };
+              }
+
+              return slot;
+            });
+          }
+        });
+      });
+
+      // Include trainer's availability
+      availability[trainer.id] = {
+        name: trainer.name,
+        surname: trainer.surname,
+        availabilitySelectedDate,
+      };
+    });
+
+    res.status(200).json(availability);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
