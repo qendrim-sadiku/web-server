@@ -1,5 +1,9 @@
 const swaggerJsDoc = require('swagger-jsdoc');
 
+// Get the port dynamically from environment variables or fallback to default
+const PORT = process.env.PORT || 3000;
+const HOST = process.env.HOST || 'localhost';
+
 const swaggerOptions = {
   definition: {
     openapi: '3.0.0',
@@ -14,7 +18,7 @@ const swaggerOptions = {
     },
     servers: [
       {
-        url: 'http://localhost:3000/api',
+        url: `http://${HOST}:${PORT}/api`, // Dynamically set the server URL
       },
     ],
   },
