@@ -1,4 +1,3 @@
-// config/swagger.js
 const swaggerJsDoc = require('swagger-jsdoc');
 
 const swaggerOptions = {
@@ -15,23 +14,14 @@ const swaggerOptions = {
     },
     servers: [
       {
-        url: 'http://localhost:3000/api', // Base URL with /api prefix
-      },
-    ],
-    components: {
-    
-    },
-    security: [
-      {
-        bearerAuth: [],
+        url: 'http://localhost:3000/api',
       },
     ],
   },
   apis: [
-    './routes/**/*.js', // This includes all route files in the routes directory and subdirectories
+    './docs/**/*.js', // Include all files in the docs folder
   ],
 };
 
 const swaggerDocs = swaggerJsDoc(swaggerOptions);
-
 module.exports = swaggerDocs;
