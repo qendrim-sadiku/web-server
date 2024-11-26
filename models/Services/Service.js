@@ -55,6 +55,10 @@ const Service = sequelize.define('Service', {
     },
     allowNull: false
   },
+  averageRating: {
+    type: DataTypes.FLOAT,
+    defaultValue: 0, // Initial average rating
+  },
   serviceTypeId: { // Add this field
     type: DataTypes.INTEGER,
     references: {

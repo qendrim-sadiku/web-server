@@ -80,12 +80,11 @@ exports.createBooking = async (req, res) => {
       return res.status(404).json({ message: 'Trainer not found' });
     }
 
-    let totalPrice = 0;
-    const validSessions = [];
+    const createdBookings = [];
 
-    // Process and validate each session (date with start and end times)
-    for (let date of dates) {
-      let { date: datePart, startTime, endTime } = date;
+    // Process each date separately to create individual bookings
+    for (let singleDate of dates) {
+      let { date: datePart, startTime, endTime } = singleDate;
 
       if (!datePart || !startTime || !endTime) {
         return res.status(400).json({ message: 'Date, start time, and end time are required for each booking session' });
@@ -111,63 +110,67 @@ exports.createBooking = async (req, res) => {
         return res.status(400).json({ message: 'End time must be greater than start time' });
       }
 
-      totalPrice += hours * trainer.hourlyRate;
+      const totalPrice = hours * trainer.hourlyRate;
 
-      // Treat each date as a session
-      validSessions.push({
-        date: datePart,
-        startTime,
-        endTime,
-        bookingId: null, // Will be assigned after booking creation
-        sessionNumber: validSessions.length + 1 // Assign a session number
+      // Create the booking for the single date
+      const booking = await Booking.create(
+        {
+          userId,
+          serviceId,
+          trainerId,
+          address,
+          totalPrice,
+        },
+        { transaction }
+      );
+
+      // Associate participants with the current booking
+      if (participants.length > 0) {
+        const participantData = participants.map((participant) => ({
+          ...participant,
+          bookingId: booking.id,
+        }));
+        await Participant.bulkCreate(participantData, { transaction });
+      }
+
+      // Create the booking session
+      await BookingDate.create(
+        {
+          date: datePart,
+          startTime,
+          endTime,
+          bookingId: booking.id,
+          sessionNumber: 1, // Since this is a single session per booking
+        },
+        { transaction }
+      );
+
+      createdBookings.push({
+        bookingId: booking.id,
+        userId: booking.userId,
+        serviceId: booking.serviceId,
+        trainerId: booking.trainerId,
+        address: booking.address,
+        totalPrice: booking.totalPrice,
+        participants,
+        session: {
+          date: datePart,
+          startTime,
+          endTime,
+        },
       });
-    }
-
-    // Create the booking
-    const booking = await Booking.create({
-      userId,
-      serviceId,
-      trainerId,
-      address,
-      totalPrice
-    }, { transaction });
-
-    // Associate participants with the current booking
-    if (participants.length > 0) {
-      const participantData = participants.map(participant => ({
-        ...participant,
-        bookingId: booking.id
-      }));
-      await Participant.bulkCreate(participantData, { transaction });
-    }
-
-    // Associate valid sessions with the booking
-    if (validSessions.length > 0) {
-      const sessionData = validSessions.map(session => ({
-        ...session,
-        bookingId: booking.id
-      }));
-      await BookingDate.bulkCreate(sessionData, { transaction });
     }
 
     await transaction.commit();
 
-    // Return booking details along with the sessions
-    res.status(201).json({
-      bookingId: booking.id,
-      userId: booking.userId,
-      serviceId: booking.serviceId,
-      trainerId: booking.trainerId,
-      address: booking.address,
-      totalPrice: booking.totalPrice,
-      participants,
-      sessions: validSessions // Display the sessions separately
-    });
+    // Return all created bookings
+    res.status(201).json({ bookings: createdBookings });
   } catch (error) {
     await transaction.rollback();
     res.status(500).json({ error: error.message });
   }
 };
+
 
 
 // Get all bookings of a user
@@ -300,6 +303,91 @@ exports.getBookingById = async (req, res) => {
       Participants: validParticipants, // Return participants only if they exist
       Trainer: selectedTrainer, // Return the trainer associated with the service
     });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+exports.getBookingsByIds = async (req, res) => {
+  try {
+    const { ids } = req.query; // Booking IDs passed as a comma-separated string
+    const { userId } = req.query; // User ID from query parameters
+
+    if (!ids) {
+      return res.status(400).json({ message: 'Booking IDs are required' });
+    }
+    if (!userId) {
+      return res.status(400).json({ message: 'User ID is required' });
+    }
+
+    // Split the string into an array of numbers
+    const bookingIds = ids.split(',').map(Number);
+
+    // Find all bookings matching the provided IDs and userId
+    const bookings = await Booking.findAll({
+      where: {
+        id: bookingIds, // Match booking IDs
+        userId, // Filter by user ID
+      },
+      include: [
+        {
+          model: Participant,
+          required: false, // Include participants if available
+        },
+        {
+          model: BookingDate,
+          attributes: ['date', 'startTime', 'endTime'], // Include date, startTime, endTime
+        },
+        {
+          model: Service,
+          attributes: ['id', 'name', 'description', 'image', 'duration', 'hourlyRate', 'level'],
+          include: [
+            {
+              model: ServiceDetails,
+              attributes: [
+                'fullDescription',
+                'highlights',
+                'whatsIncluded',
+                'whatsNotIncluded',
+                'recommendations',
+                'whatsToBring',
+                'coachInfo',
+              ],
+            },
+            {
+              model: Trainer,
+              through: { attributes: [] }, // Include Trainer through the ServiceTrainer join table
+              attributes: ['id', 'name', 'surname', 'avatar', 'hourlyRate', 'userRating'], // Only fetch necessary fields
+            },
+          ],
+        },
+      ],
+    });
+
+    if (!bookings || bookings.length === 0) {
+      return res.status(404).json({ message: 'No bookings found' });
+    }
+
+    // Map over bookings to prepare the response
+    const response = bookings.map((booking) => {
+      const validParticipants = booking.Participants && booking.Participants.length > 0
+        ? booking.Participants
+        : null;
+
+      const validDates = booking.BookingDates.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, 1);
+
+      const selectedTrainer = booking.Service?.Trainers?.[0] || null;
+
+      return {
+        ...booking.toJSON(),
+        BookingDates: validDates, // Return the most recent valid date
+        Participants: validParticipants, // Return participants only if they exist
+        Trainer: selectedTrainer, // Return the trainer associated with the service
+      };
+    });
+
+    // Send the response
+    res.status(200).json(response);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -851,7 +939,6 @@ exports.removeBooking = async (req, res) => {
   }
 };
 
-
 exports.rateBooking = async (req, res) => {
   try {
     const { id } = req.params; // Booking ID from URL
@@ -862,7 +949,7 @@ exports.rateBooking = async (req, res) => {
     }
 
     // Find the booking by ID
-    const booking = await Booking.findByPk(id);
+    const booking = await Booking.findByPk(id, { include: Service });
     if (!booking) {
       return res.status(404).json({ message: 'Booking not found' });
     }
@@ -872,7 +959,32 @@ exports.rateBooking = async (req, res) => {
     booking.review = review || null; // Optional review
     await booking.save();
 
-    res.status(200).json({ message: 'Rating and review updated successfully', booking });
+    // Update the service's ratings
+    const service = booking.Service;
+    if (service) {
+      const ratings = await Booking.findAll({
+        where: { serviceId: service.id },
+        attributes: [[sequelize.fn('AVG', sequelize.col('rating')), 'avgRating'], [sequelize.fn('COUNT', sequelize.col('rating')), 'totalRatings']],
+        raw: true,
+      });
+
+      const avgRating = parseFloat(ratings[0].avgRating).toFixed(1); // Rounded to 1 decimal
+      const totalRatings = ratings[0].totalRatings;
+
+      service.averageRating = avgRating;
+      service.totalRatings = totalRatings;
+      await service.save();
+    }
+
+    res.status(200).json({
+      message: 'Rating and review updated successfully',
+      booking,
+      service: {
+        id: service.id,
+        averageRating: service.averageRating,
+        totalRatings: service.totalRatings,
+      },
+    });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
