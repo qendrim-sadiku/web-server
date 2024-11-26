@@ -66,9 +66,9 @@ const Service = sequelize.define('Service', {
       key: 'id'
     },
     allowNull: false
-  }
+  } 
 }, {
-  timestamps: true
+  timestamps: true   
 });
 const ServiceTrainer = sequelize.define('ServiceTrainer', {
   serviceId: {
