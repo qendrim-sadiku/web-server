@@ -7,7 +7,7 @@ const passport = require('../config/passport');
 
 
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:4200';
-
+ 
 router.post('/signup', authController.signup);
 router.post('/login', authController.login);
 router.post('/change-password/:userId', authController.changePassword);
@@ -170,7 +170,7 @@ router.get('/auth/facebook/callback', (req, res, next) => {
         role: user.role
       };
       
-      
+
       const userBase64 = Buffer.from(JSON.stringify(userData)).toString('base64');
       res.redirect(`${FRONTEND_URL}/welcome?token=${token}&user=${userBase64}`);
     }
