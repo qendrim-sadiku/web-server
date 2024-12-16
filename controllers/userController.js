@@ -3,6 +3,7 @@ const User = require('../models/User');
 const bcrypt = require('bcrypt');
 const fs = require('fs');
 const multer = require('multer');
+const sendEmail = require('../config/emailService');
 
 const path = require('path');
 
@@ -411,75 +412,6 @@ exports.updateMeetingPoints = async (req, res) => {
 };
 
 
-exports.updateAddresses = async (req, res) => {
-  const { userId, addresses, deletedAddresses } = req.body;
-
-  try {
-    // Ensure userId and addresses array are provided
-    if (!userId) {
-      return res.status(400).send({ message: 'User ID is required' });
-    }
-
-    if (!addresses || !Array.isArray(addresses)) {
-      return res.status(400).send({ message: 'Addresses array is required' });
-    }
-
-    let user = await User.findByPk(userId);
-    if (!user) {
-      return res.status(404).send({ message: 'User not found' });
-    }
-
-    // Process deletions first
-    if (deletedAddresses && Array.isArray(deletedAddresses) && deletedAddresses.length > 0) {
-      await Address.destroy({
-        where: {
-          id: deletedAddresses,
-          UserId: userId
-        }
-      });
-    }
-
-    // Check if any address is set as default
-    const defaultAddresses = addresses.filter(address => address.defaultAddress === true);
-
-    if (defaultAddresses.length > 1) {
-      return res.status(400).send({ message: 'Only one address can be set as default' });
-    }
-
-    // If there is a new default address, unset previous default
-    if (defaultAddresses.length === 1) {
-      const defaultAddress = defaultAddresses[0];
-      
-      // Set all existing addresses for the user to defaultAddress false
-      await Address.update(
-        { defaultAddress: false },
-        { where: { UserId: userId } }
-      );
-
-      // Mark the selected address as default
-      defaultAddress.defaultAddress = true;
-    }
-
-    // Iterate over each address and validate, then upsert each one
-    for (const address of addresses) {
-      if (!address.country || !address.city || !address.street) {
-        return res.status(400).send({ message: 'Each address must include country, city, and street' });
-      }
-
-      // Upsert the address (insert if new, or update if existing)
-      await Address.upsert({ 
-        ...address, 
-        UserId: user.id,
-        instructions: address.instructions || null  // Handle optional 'instructions'
-      });
-    }
-
-    res.status(200).send({ message: 'Addresses updated successfully' });
-  } catch (error) {
-    console.error('Error updating addresses:', error);
-    res.status(500).send({ message: 'Error updating addresses', error: error.message || error });
-  }
-};
 
 
 
@@ -565,26 +497,24 @@ exports.getUserAddresses = async (req, res) => {
     // Fetch all addresses for the user
     let addresses = await Address.findAll({
       where: { UserId: req.params.userId },
-      attributes: ['id', 'country', 'city', 'street', 'state', 'zipCode', 'instructions', 'defaultAddress'],  // Include 'instructions'
+      attributes: [
+        'id',
+        'country',
+        'city',
+        'street',
+        'state',
+        'zipCode',
+        'instructions',
+        'defaultAddress',
+        'countryCode',
+        'phoneNumber',
+        'firstName',
+        'lastName' // Include new fields
+      ]
     });
 
     if (addresses.length === 0) {
       return res.status(200).send({ message: 'No addresses available', data: [] });
-    }
-
-    // Check if there is a default address
-    const defaultAddressExists = addresses.some(address => address.defaultAddress === true);
-
-    // If no default address exists, set the first address as default
-    if (!defaultAddressExists && addresses.length > 0) {
-      const firstAddressId = addresses[0].id;
-      await Address.update(
-        { defaultAddress: true },
-        { where: { id: firstAddressId } }
-      );
-
-      // Update the default address flag in the addresses array
-      addresses[0].defaultAddress = true;
     }
 
     res.status(200).send({ message: 'Addresses fetched successfully', data: addresses });
@@ -595,9 +525,8 @@ exports.getUserAddresses = async (req, res) => {
 };
 
 
-// Set a specific address as the default among multiple addresses
 exports.setDefaultAddress = async (req, res) => {
-  const { userId, addressId } = req.body;
+  const { userId, addressId } = req.body; // Extract userId and addressId from request body
 
   try {
     // Fetch all addresses for the user
@@ -630,6 +559,60 @@ exports.setDefaultAddress = async (req, res) => {
   }
 };
 
+
+exports.updateAddresses = async (req, res) => {
+  const { userId, addresses, deletedAddresses } = req.body;
+
+  try {
+    if (!userId) {
+      return res.status(400).send({ message: 'User ID is required' });
+    }
+
+    if (!addresses || !Array.isArray(addresses)) {
+      return res.status(400).send({ message: 'Addresses array is required' });
+    }
+
+    let user = await User.findByPk(userId);
+    if (!user) {
+      return res.status(404).send({ message: 'User not found' });
+    }
+
+    if (deletedAddresses && Array.isArray(deletedAddresses) && deletedAddresses.length > 0) {
+      await Address.destroy({
+        where: {
+          id: deletedAddresses,
+          UserId: userId
+        }
+      });
+    }
+
+    const defaultAddresses = addresses.filter(address => address.defaultAddress === true);
+    if (defaultAddresses.length > 1) {
+      return res.status(400).send({ message: 'Only one address can be set as default' });
+    }
+
+    for (const address of addresses) {
+      if (!address.country || !address.city || !address.street) {
+        return res.status(400).send({ message: 'Each address must include country, city, and street' });
+      }
+
+      await Address.upsert({
+        ...address,
+        UserId: user.id,
+        instructions: address.instructions || null,
+        firstName: address.firstName || null,
+        lastName: address.lastName || null, // Handle optional fields
+        countryCode: address.countryCode || '+1',
+        phoneNumber: address.phoneNumber || ''
+      });
+    }
+
+    res.status(200).send({ message: 'Addresses updated successfully' });
+  } catch (error) {
+    console.error('Error updating addresses:', error);
+    res.status(500).send({ message: 'Error updating addresses', error: error.message || error });
+  }
+};
 
 
 
@@ -726,7 +709,6 @@ exports.getUserDetails = async (req, res) => {
 };
 
 
-// Get user payment info (multiple cards)
 exports.getUserPaymentInfo = async (req, res) => {
   try {
     const userId = req.params.userId;
@@ -734,7 +716,16 @@ exports.getUserPaymentInfo = async (req, res) => {
     // Fetch all payment info for the user
     const paymentInfo = await PaymentInfo.findAll({
       where: { UserId: userId },
-      attributes: ['id', 'cardNumber', 'cardHolderName', 'cvv', 'expirationDate', 'isDefault'], // Include isDefault
+      attributes: [
+        'id',
+        'cardNumber',
+        'cardHolderName',
+        'cvv',
+        'expirationDate',
+        'country',
+        'zipCode',
+        'isDefault'
+      ],
       order: [['updatedAt', 'DESC']] // Sort by most recent update
     });
 
@@ -751,7 +742,7 @@ exports.getUserPaymentInfo = async (req, res) => {
 
 // Add new payment info (multiple cards allowed)
 exports.updatePaymentInfo = async (req, res) => {
-  const { userId, cardNumber, cardHolderName, cvv, expirationDate } = req.body;
+  const { userId, cardNumber, cardHolderName, cvv, expirationDate, country, zipCode } = req.body;
 
   try {
     // Check if the userId exists in the request
@@ -772,10 +763,12 @@ exports.updatePaymentInfo = async (req, res) => {
 
     // Create a new payment info entry for the user (using the association)
     await PaymentInfo.create({
-      cardNumber: cardNumber,
-      cardHolderName: cardHolderName,
-      cvv: cvv,
-      expirationDate: expirationDate,
+      cardNumber,
+      cardHolderName,
+      cvv,
+      expirationDate,
+      country, // Optional field
+      zipCode, // Optional field
       UserId: user.id // Associate the payment info with the user
     });
 
@@ -786,6 +779,7 @@ exports.updatePaymentInfo = async (req, res) => {
     res.status(500).send({ message: 'Error adding payment info', error: error.message || error });
   }
 };
+
 
 // Delete payment info (single card)
 exports.deletePaymentInfo = async (req, res) => {
@@ -1499,6 +1493,30 @@ exports.updateFcmToken = async (req, res) => {
   }
 };
 
+exports.removeFcmToken = async (req, res) => {
+  const { userId } = req.body;
+
+  try {
+    if (!userId) {
+      return res.status(400).json({ message: 'User ID is required' });
+    }
+
+    const user = await User.findByPk(userId);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    // Set the FCM token to null or an empty string
+    await user.update({ fcmToken: null });
+
+    res.status(200).json({ message: 'FCM token removed successfully' });
+  } catch (error) {
+    console.error('Error removing FCM token:', error);
+    res.status(500).json({ message: 'Failed to remove FCM token', error });
+  }
+};
+
+
 
 
 // Add a service to browsing history
@@ -1583,5 +1601,221 @@ exports.clearBrowsingHistory = async (req, res) => {
   } catch (error) {
     console.error('Error clearing browsing history:', error);
     res.status(500).json({ message: 'Failed to clear browsing history', error });
+  }
+};
+
+
+exports.updateEmailWithVerification = async (req, res) => {
+  const { userId, newEmail, verificationCode } = req.body;
+
+  try {
+    if (!userId || !newEmail || !verificationCode) {
+      return res.status(400).json({ message: 'User ID, new email, and verification code are required' });
+    }
+
+    const user = await User.findByPk(userId);
+
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    // Verify the code
+    const currentTime = new Date();
+    const expiryTime = new Date(user.verificationCodeExpires);
+
+    if (
+      user.verificationCode !== parseInt(verificationCode, 10) ||
+      currentTime > expiryTime
+    ) {
+      return res.status(400).json({ message: 'Invalid or expired verification code' });
+    }
+
+    // Update the email and clear the verification code
+    user.email = newEmail;
+    user.verificationCode = null;
+    user.verificationCodeExpires = null;
+    await user.save();
+
+    res.status(200).json({ message: 'Email updated successfully' });
+  } catch (error) {
+    console.error('Error updating email with verification:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+exports.sendVerificationCodeForEmailUpdate = async (req, res) => {
+  const { userId, newEmail } = req.body;
+
+  try {
+    if (!userId || !newEmail) {
+      return res.status(400).json({ message: 'User ID and new email are required' });
+    }
+
+    // Find the user attempting to update their email
+    const user = await User.findByPk(userId);
+
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    // Check if the new email is already in use by another user
+    const existingUser = await User.findOne({ where: { email: newEmail } });
+    if (existingUser && existingUser.id !== userId) {
+      return res.status(400).json({ message: 'This email is already used by another account' });
+    }
+
+    // Check if a verification code is already set and not expired
+    const currentTime = new Date();
+    if (user.verificationCodeExpires && new Date(user.verificationCodeExpires) > currentTime) {
+      return res.status(400).json({
+        message: `A verification code was already sent and is valid until ${new Date(
+          user.verificationCodeExpires
+        ).toLocaleTimeString()}`,
+      });
+    }
+
+    // Generate a new 6-digit verification code
+    const verificationCode = Math.floor(100000 + Math.random() * 900000);
+
+    // Set expiry to 2 minutes from now
+    const expiry = new Date();
+    expiry.setMinutes(expiry.getMinutes() + 2);
+
+    // Save the code and expiry
+    user.verificationCode = verificationCode;
+    user.verificationCodeExpires = expiry;
+    await user.save();
+
+    // Send the verification code to the new email
+    await sendEmail(
+      newEmail,
+      'Verify Your Email Update',
+      `Your verification code is: ${verificationCode}. The code will expire at ${expiry.toLocaleTimeString()}.`
+    );
+
+    res.status(200).json({
+      message: 'Verification code sent successfully. It will expire in 2 minutes.',
+    });
+  } catch (error) {
+    console.error('Error sending verification code:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+exports.resendVerificationCodeForEmailUpdate = async (req, res) => {
+  const { userId, newEmail } = req.body;
+
+  try {
+    if (!userId || !newEmail) {
+      return res.status(400).json({ message: 'User ID and new email are required' });
+    }
+
+    const user = await User.findByPk(userId);
+
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    // Generate a new 6-digit verification code
+    const verificationCode = Math.floor(100000 + Math.random() * 900000);
+
+    // Set expiry to 2 minutes from now
+    const expiry = new Date();
+    expiry.setMinutes(expiry.getMinutes() + 2);
+
+    // Save the new code and expiry
+    user.verificationCode = verificationCode;
+    user.verificationCodeExpires = expiry;
+    await user.save();
+
+    // Resend the verification code to the new email
+    await sendEmail(
+      newEmail,
+      'Resend: Verify Your Email Update',
+      `Your verification code is: ${verificationCode}`
+    );
+
+    res.status(200).json({ message: 'Verification code resent successfully' });
+  } catch (error) {
+    console.error('Error resending verification code:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+exports.verifyCodeForEmailUpdate = async (req, res) => {
+  const { userId, verificationCode } = req.body;
+
+  try {
+    if (!userId || !verificationCode) {
+      return res.status(400).json({ message: 'User ID and verification code are required' });
+    }
+
+    const user = await User.findByPk(userId);
+
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    // Verify the code
+    const currentTime = new Date();
+    const expiryTime = new Date(user.verificationCodeExpires);
+
+    if (
+      user.verificationCode !== parseInt(verificationCode, 10) ||
+      currentTime > expiryTime
+    ) {
+      return res.status(400).json({ message: 'Invalid or expired verification code' });
+    }
+
+    // Code is valid
+    res.status(200).json({ message: 'Verification code is valid' });
+  } catch (error) {
+    console.error('Error verifying code:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+
+// Update user description
+exports.updateUserDescription = async (req, res) => {
+  const { userId, description } = req.body;
+
+  try {
+    if (!userId) {
+      return res.status(400).send({ message: 'User ID is required' });
+    }
+
+    const user = await User.findByPk(userId);
+    if (!user) {
+      return res.status(404).send({ message: 'User not found' });
+    }
+
+    // Update the description field
+    await user.update({ description });
+
+    res.status(200).send({ message: 'User description updated successfully', description });
+  } catch (error) {
+    console.error('Error updating user description:', error);
+    res.status(500).send({ message: 'Error updating user description', error });
+  }
+};
+
+// Get user description
+exports.getUserDescription = async (req, res) => {
+  const { userId } = req.params;
+
+  try {
+    const user = await User.findByPk(userId, {
+      attributes: ['description'] // Fetch only the description field
+    });
+
+    if (!user) {
+      return res.status(404).send({ message: 'User not found' });
+    }
+
+    res.status(200).send({ description: user.description });
+  } catch (error) {
+    console.error('Error fetching user description:', error);
+    res.status(500).send({ message: 'Error fetching user description', error });
   }
 };

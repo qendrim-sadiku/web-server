@@ -30,6 +30,10 @@ router.put('/update-contact-details', authenticateJWT, userController.updateCont
 // Update address (authenticated users only)
 router.put('/update-addresses', userController.updateAddresses);
 
+// Set default address (authenticated users only)
+router.put('/set-default-address', authenticateJWT, userController.setDefaultAddress);
+
+
 // Update meeting points (authenticated users only)
 router.put('/update-meeting-points', authenticateJWT, userController.updateMeetingPoints);
 
@@ -134,6 +138,9 @@ router.get('/user/:userId/preferences/email-notifications', authenticateJWT, use
 // Add route to update FCM token
 router.put('/user/update-fcm-token', userController.updateFcmToken);
 
+router.put('/user/remove-fcm-token', userController.removeFcmToken); // Remove FCM Token
+
+
 // Add to browsing history
 router.post('/user/browsing-history', userController.addBrowsingHistory);
 
@@ -145,5 +152,20 @@ router.delete('/user/browsing-history/item', userController.removeBrowsingHistor
 
 // Clear all browsing history for a user
 router.delete('/user/browsing-history/:userId', userController.clearBrowsingHistory);
+
+
+// Route to send verification code for email update
+router.post('/send-verification-code', userController.sendVerificationCodeForEmailUpdate);
+
+// Route to update email with verification
+router.put('/update-email', userController.updateEmailWithVerification);
+
+router.post('/resend-email-update-code', userController.resendVerificationCodeForEmailUpdate);
+
+router.post('/verify-email-code', userController.verifyCodeForEmailUpdate);
+
+// Add routes for updating and retrieving description
+router.put('/description', userController.updateUserDescription);
+router.get('/:userId/description', userController.getUserDescription);
 
 module.exports = router;

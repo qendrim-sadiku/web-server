@@ -2,6 +2,9 @@ const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const { Op } = require('sequelize');
 const User = require('../models/User');
+const sendEmail = require('../config/emailService');
+
+
 
 // User signup
 exports.signup = async (req, res) => {
@@ -197,4 +200,221 @@ exports.authenticateToken = (req, res, next) => {
     req.user = decoded; // Attach decoded user to request
     next();
   });
+};
+
+
+// exports.loginOrSignup = async (req, res) => {
+//   const { email, password, name } = req.body;
+
+//   if (!email || !password || !name) {
+//     return res.status(400).json({ message: 'Email, password, and name are required' });
+//   }
+
+//   try {
+//     let user = await User.findOne({ where: { email } });
+
+//     if (!user) {
+//       // If user doesn't exist, create a new user with a hashed password
+//       const hashedPassword = await bcrypt.hash(password, 10);
+//       user = await User.create({
+//         email,
+//         password: hashedPassword,
+//         name,
+//       });
+//     } else {
+//       // Ensure user has a password before calling bcrypt.compare
+//       if (!user.password) {
+//         return res.status(400).json({ message: 'User does not have a password set' });
+//       }
+
+//       // Verify the password
+//       const isPasswordValid = await bcrypt.compare(password, user.password);
+//       if (!isPasswordValid) {
+//         return res.status(401).json({ message: 'Invalid email or password' });
+//       }
+//     }
+
+//     // Generate a 6-digit verification code
+//     const verificationCode = Math.floor(100000 + Math.random() * 900000);
+
+//     // Set code expiry (e.g., 5 minutes from now)
+//     const expiry = new Date();
+//     expiry.setMinutes(expiry.getMinutes() + 5);
+
+//     // Save the code and expiry
+//     user.verificationCode = verificationCode;
+//     user.verificationCodeExpires = expiry;
+//     await user.save();
+
+//     // Send the code to the user's email
+//     await sendEmail(email, 'Your Verification Code', `Your verification code is: ${verificationCode}`);
+
+//     res.status(200).json({ message: 'Verification code sent to your email' });
+//   } catch (error) {
+//     console.error('Error during login/signup:', error);
+//     res.status(500).json({ error: 'Internal server error' });
+//   }
+// };
+
+exports.signup = async (req, res) => {
+  const { email, password, name } = req.body;
+
+  if (!email || !password || !name) {
+    return res.status(400).json({ message: 'Email, password, and name are required' });
+  }
+
+  try {
+    // Check if the user already exists
+    const existingUser = await User.findOne({ where: { email } });
+    if (existingUser) {
+      return res.status(409).json({ message: 'This email is already in use. Please log in instead.' });
+    }
+
+    // Hash the password and create the user
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const newUser = await User.create({
+      email,
+      password: hashedPassword,
+      name,
+    });
+
+    // Send a verification code
+    await exports.resendVerificationCode({ body: { email } }, res);
+
+  } catch (error) {
+    console.error('Error during signup:', error);
+
+    if (error.name === 'SequelizeValidationError') {
+      return res.status(400).json({ message: 'Invalid input data', details: error.errors });
+    }
+
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+exports.signin = async (req, res) => {
+  const { email, password } = req.body;
+
+  if (!email || !password) {
+    return res.status(400).json({ message: 'Email and password are required' });
+  }
+
+  try {
+    // Check if the user exists
+    const user = await User.findOne({ where: { email } });
+    if (!user) {
+      return res.status(404).json({ message: 'No account found with this email. Please sign up.' });
+    }
+
+    // Check if the user has a password set
+    if (!user.password) {
+      return res.status(400).json({ message: 'User does not have a password set. Please contact support.' });
+    }
+
+    // Validate the password
+    const isPasswordValid = await bcrypt.compare(password, user.password);
+    if (!isPasswordValid) {
+      return res.status(401).json({ message: 'Invalid email or password' });
+    }
+
+    // Send a verification code
+    await exports.resendVerificationCode({ body: { email } }, res);
+
+  } catch (error) {
+    console.error('Error during signin:', error);
+
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+
+exports.verifyCode = async (req, res) => {
+  const { email, code } = req.body;
+
+  try {
+    const user = await User.findOne({ where: { email } });
+
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    // Log for debugging
+    console.log('Current time:', new Date());
+    console.log('Code expiry time:', new Date(user.verificationCodeExpires));
+
+    // Check if the code matches and is not expired
+    const currentTime = new Date();
+    const expiryTime = new Date(user.verificationCodeExpires);
+
+    if (
+      user.verificationCode !== parseInt(code, 10) ||
+      currentTime > expiryTime
+    ) {
+      return res.status(400).json({ message: 'Invalid or expired verification code' });
+    }
+
+    // Clear the verification code
+    user.verificationCode = null;
+    user.verificationCodeExpires = null;
+    await user.save();
+
+    // Generate a JWT token
+    const token = jwt.sign(
+      { id: user.id, email: user.email },
+      process.env.JWT_SECRET,
+      { expiresIn: '7d' }
+    );
+
+    // Exclude sensitive data like password from the user object
+    const userResponse = {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+    };
+
+    res.status(200).json({
+      message: 'Verification successful',
+      token,
+      user: userResponse,
+    });
+  } catch (error) {
+    console.error('Error verifying code:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+exports.resendVerificationCode = async (req, res) => {
+  const { email } = req.body;
+
+  try {
+    const user = await User.findOne({ where: { email } });
+
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    // Generate a new 6-digit verification code
+    const verificationCode = Math.floor(100000 + Math.random() * 900000);
+
+    // Set expiry to 2 minutes from now
+    const expiry = new Date();
+    expiry.setMinutes(expiry.getMinutes() + 2);
+
+    // Save the new code and expiry in the database
+    user.verificationCode = verificationCode;
+    user.verificationCodeExpires = expiry;
+    await user.save();
+
+    // Send the verification code via email
+    await sendEmail(
+      email,
+      'Your Verification Code',
+      `Your verification code is: ${verificationCode}`
+    );
+
+    res.status(200).json({ message: 'Verification code resent successfully' });
+  } catch (error) {
+    console.error('Error resending verification code:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
 };

@@ -1,7 +1,7 @@
 const { DataTypes } = require('sequelize');
 const sequelize = require('../config/sequelize');
-const bcrypt = require('bcrypt'); // Assuming bcrypt for password hashing
 
+// Import related models
 const UserContactDetails = require('./UserProfile/UserContactDetails');
 const Address = require('./UserProfile/Address');
 const MeetingPoint = require('./UserProfile/MeetingPoint');
@@ -9,97 +9,120 @@ const UserDetails = require('./UserProfile/UserDetails');
 const PaymentInfo = require('./UserProfile/PaymentInfo');
 const UserPreferences = require('./UserProfile/UserPreferences');
 
-
 const User = sequelize.define('User', {
   id: {
     type: DataTypes.INTEGER,
     autoIncrement: true,
-    primaryKey: true
+    primaryKey: true,
   },
   name: {
     type: DataTypes.STRING,
-    allowNull: false,
+    allowNull: true, // Allow null for optional fields
     validate: {
       notEmpty: {
-        msg: 'Name is required'
-      }
-    }
+        msg: 'Name is required',
+      },
+    },
   },
   surname: {
     type: DataTypes.STRING,
-    allowNull: false,
+    allowNull: true, // Allow null for optional fields
     validate: {
       notEmpty: {
-        msg: 'Surname is required'
-      }
-    }
+        msg: 'Surname is required',
+      },
+    },
   },
   avatar: {
     type: DataTypes.STRING,
-    allowNull: true,
+    allowNull: true, // Optional field
   },
   username: {
     type: DataTypes.STRING,
-    allowNull: false,
+    allowNull: true, // Allow null for optional fields
     unique: {
-      msg: 'Username already exists'
+      msg: 'Username already exists',
     },
     validate: {
       notEmpty: {
-        msg: 'Username is required'
+        msg: 'Username is required',
       },
       len: {
         args: [3, 20],
-        msg: 'Username must be between 3 and 20 characters'
-      }
-    }
+        msg: 'Username must be between 3 and 20 characters',
+      },
+    },
   },
+  description: {
+    type: DataTypes.TEXT,
+    allowNull: true, // Optional field
+    validate: {
+      len: {
+        args: [0, 500], // Restrict length to a maximum of 500 characters
+        msg: 'Description must not exceed 500 characters',
+      },
+    },
+  },
+  
+  verificationCode: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+  },
+  verificationCodeExpires: {
+    type: DataTypes.DATE,
+    allowNull: true,
+  },
+  
   sportPreference: {
     type: DataTypes.STRING,
-    allowNull: true
+    allowNull: true, // Optional field
   },
   expertisePreference: {
     type: DataTypes.STRING,
-    allowNull: true
+    allowNull: true, // Optional field
   },
   fcmToken: {
     type: DataTypes.STRING,
-    allowNull: true,
+    allowNull: true, // Optional field
   },
   email: {
     type: DataTypes.STRING,
-    allowNull: false,
+    allowNull: true, // Required field
     unique: {
-      msg: 'Email already exists'
+      msg: 'Email already exists',
     },
-   
     validate: {
       notEmpty: {
-        msg: 'Email is required'
+        msg: 'Email is required',
       },
       isEmail: {
-        msg: 'Invalid email format'
-      }
-    }
+        msg: 'Invalid email format',
+      },
+    },
   },
   password: {
     type: DataTypes.STRING,
-    allowNull: false,
-    validate: {
-      notEmpty: { msg: 'Password is required' },
-      len: { args: [6, 255], msg: 'Password must be between 6 and 255 characters' }
-    }
+    allowNull: true, // Allow null for OAuth users
+  },
+  provider: {
+    type: DataTypes.STRING, // e.g., 'google', 'facebook'
+    allowNull: true, // Optional field
+  },
+  providerId: {
+    type: DataTypes.STRING, // OAuth provider user ID
+    allowNull: true, // Optional field
   },
   role: {
     type: DataTypes.ENUM('user', 'admin', 'trainer'),
-    defaultValue: 'user'
+    defaultValue: 'user', // Default to 'user'
   },
   isProfileCompleted: {
     type: DataTypes.BOOLEAN,
     defaultValue: false, // By default, profile is not completed
-  }
+  },
 });
 
+// Define relationships
 User.hasOne(Address, { onDelete: 'CASCADE' });
 Address.belongsTo(User);
 
@@ -117,6 +140,5 @@ PaymentInfo.belongsTo(User);
 
 User.hasOne(UserPreferences, { onDelete: 'CASCADE' });
 UserPreferences.belongsTo(User);
-
 
 module.exports = User;

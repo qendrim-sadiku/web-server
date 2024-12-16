@@ -33,6 +33,20 @@ const PaymentInfo = sequelize.define('PaymentInfo', {
       isDate: { msg: 'Invalid date format' }
     }
   },
+  country: {
+    type: DataTypes.STRING,
+    allowNull: true, // Optional
+    validate: {
+      notEmpty: { msg: 'Country cannot be empty' }
+    }
+  },
+  zipCode: {
+    type: DataTypes.STRING,
+    allowNull: true, // Optional
+    validate: {
+      len: { args: [5, 10], msg: 'Zip code must be between 5 and 10 characters' }
+    }
+  },
   isDefault: {
     type: DataTypes.BOOLEAN,
     allowNull: false,
