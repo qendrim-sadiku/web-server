@@ -169,14 +169,12 @@ router.get('/auth/facebook/callback', (req, res, next) => {
         name: user.name,
         role: user.role
       };
-
+      
+      
       const userBase64 = Buffer.from(JSON.stringify(userData)).toString('base64');
       res.redirect(`${FRONTEND_URL}/welcome?token=${token}&user=${userBase64}`);
     }
   })(req, res, next);
 });
-
-  
-  
 
 module.exports = router;
