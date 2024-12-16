@@ -5,6 +5,9 @@ const router = express.Router();
 const authController = require('../controllers/authController');
 const passport = require('../config/passport');
 
+
+const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:4200';
+
 router.post('/signup', authController.signup);
 router.post('/login', authController.login);
 router.post('/change-password/:userId', authController.changePassword);
@@ -117,8 +120,7 @@ router.get('/auth/google/callback', (req, res, next) => {
   passport.authenticate('google', (err, user, info) => {
     if (err) return next(err);
     if (!user) {
-      const frontendUrl = 'http://localhost:4200';
-      res.redirect(`${frontendUrl}/login?error=${encodeURIComponent(info.message)}`);
+      res.redirect(`${FRONTEND_URL}/login?error=${encodeURIComponent(info.message)}`);
     } else {
       const token = jwt.sign(
         { id: user.id, email: user.email, role: user.role },
@@ -134,13 +136,10 @@ router.get('/auth/google/callback', (req, res, next) => {
       };
 
       const userBase64 = Buffer.from(JSON.stringify(userData)).toString('base64');
-      const frontendUrl = 'http://localhost:4200';
-      res.redirect(`${frontendUrl}/welcome?token=${token}&user=${userBase64}`);
+      res.redirect(`${FRONTEND_URL}/welcome?token=${token}&user=${userBase64}`);
     }
   })(req, res, next);
 });
-
-// routes/auth.js
 
 // Facebook Authentication Route
 router.get('/auth/facebook', (req, res, next) => {
@@ -156,8 +155,7 @@ router.get('/auth/facebook/callback', (req, res, next) => {
   passport.authenticate('facebook', (err, user, info) => {
     if (err) return next(err);
     if (!user) {
-      const frontendUrl = 'http://localhost:4200';
-      res.redirect(`${frontendUrl}/login?error=${encodeURIComponent(info.message)}`);
+      res.redirect(`${FRONTEND_URL}/login?error=${encodeURIComponent(info.message)}`);
     } else {
       const token = jwt.sign(
         { id: user.id, email: user.email, role: user.role },
@@ -173,12 +171,10 @@ router.get('/auth/facebook/callback', (req, res, next) => {
       };
 
       const userBase64 = Buffer.from(JSON.stringify(userData)).toString('base64');
-      const frontendUrl = 'http://localhost:4200';
-      res.redirect(`${frontendUrl}/welcome?token=${token}&user=${userBase64}`);
+      res.redirect(`${FRONTEND_URL}/welcome?token=${token}&user=${userBase64}`);
     }
   })(req, res, next);
 });
-
 
   
   
