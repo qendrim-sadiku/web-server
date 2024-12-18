@@ -6,7 +6,7 @@ const authController = require('../controllers/authController');
 const passport = require('../config/passport');
 
 
-const FRONTEND_URL =  'https://aroit.com';
+const FRONTEND_URL = 'https://aroit.com';
 
 router.post('/signup', authController.signup);
 router.post('/login', authController.login);
