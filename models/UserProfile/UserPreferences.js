@@ -8,6 +8,18 @@ const UserPreferences = sequelize.define('UserPreferences', {
     type: DataTypes.BOOLEAN,
     defaultValue: false, // By default, two-factor authentication is disabled
   },
+  twoFactorVerificationCode: {
+    type: DataTypes.INTEGER,
+    allowNull: true
+  },
+  twoFactorVerificationCodeExpires: {
+    type: DataTypes.DATE,
+    allowNull: true
+  },
+  twoFactorRequestedValue: {
+    type: DataTypes.BOOLEAN,
+    allowNull: true
+  },
   emailNotifications: {
     type: DataTypes.BOOLEAN,
     defaultValue: true, // By default, email notifications are enabled

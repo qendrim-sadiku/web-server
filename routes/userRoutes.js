@@ -24,6 +24,9 @@ router.post('/verify', authenticateJWT, userController.verifyCurrentPassword);
 // Route for updating password (authenticated users only)
 router.put('/change-password', authenticateJWT, userController.updatePassword);
 
+// Route to get the last password update timestamp
+router.get('/:userId/password-last-updated', userController.getPasswordLastUpdated);
+
 // Update contact details (authenticated users only)
 router.put('/update-contact-details', authenticateJWT, userController.updateContactDetails);
 
@@ -74,7 +77,18 @@ router.put('/user/:userId/preferences', userController.updateUserPreferences);
 router.get('/user/:userId/preferences', authenticateJWT, userController.getUserPreferences);
 
 // Route to update two-factor authentication (authenticated users only)
-router.put('/user/:userId/preferences/two-factor-authentication', authenticateJWT, userController.updateTwoFactorAuthentication);
+// router.put('/user/:userId/preferences/two-factor-authentication', userController.updateTwoFactorAuthentication);
+
+router.get('/:userId/preferences/two-factor-authentication', userController.getTwoFactorAuthenticationStatus);
+
+// Send verification code for two-factor authentication
+router.post('/twoFactor/sendVerificationCode', userController.sendVerificationCodeForTwoFactor);
+
+// Resend verification code for two-factor authentication
+router.post('/twoFactor/resendVerificationCode', userController.resendVerificationCodeForTwoFactor);
+
+// Verify the code and update two-factor authentication setting
+router.post('/twoFactor/verifyCode', userController.verifyTwoFactorCodeAndUpdate);
 
 // Route to update email notifications (authenticated users only)
 router.put('/user/:userId/preferences/email-notifications', authenticateJWT, userController.updateEmailNotifications);
@@ -167,5 +181,20 @@ router.post('/verify-email-code', userController.verifyCodeForEmailUpdate);
 // Add routes for updating and retrieving description
 router.put('/description', userController.updateUserDescription);
 router.get('/:userId/description', userController.getUserDescription);
+
+
+
+// Send code for forgot password
+router.post('/forgot-password/send-code', userController.sendForgotPasswordCode);
+
+router.post('/forgot-password/resend-code', userController.resendForgotPasswordCode);
+
+
+// Verify the code
+router.post('/forgot-password/verify-code', userController.verifyForgotPasswordCode);
+
+// Reset password without current password
+router.post('/forgot-password/reset-password', userController.resetPasswordWithoutCurrent);
+
 
 module.exports = router;

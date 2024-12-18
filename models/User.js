@@ -100,10 +100,17 @@ const User = sequelize.define('User', {
       },
     },
   },
+  passwordLastUpdatedAt: {
+    type: DataTypes.DATE,
+    allowNull: true, // Optional field, initially null
+    defaultValue: null,
+    comment: 'Timestamp for last password update',
+  },
   password: {
     type: DataTypes.STRING,
     allowNull: true, // Allow null for OAuth users
   },
+  
   provider: {
     type: DataTypes.STRING, // e.g., 'google', 'facebook'
     allowNull: true, // Optional field

@@ -3,6 +3,7 @@ const jwt = require('jsonwebtoken');
 const { Op } = require('sequelize');
 const User = require('../models/User');
 const sendEmail = require('../config/emailService');
+const UserPreferences = require('../models/UserProfile/UserPreferences');
 
 
 
@@ -292,6 +293,109 @@ exports.signup = async (req, res) => {
   }
 };
 
+// exports.signin = async (req, res) => {
+//   const { email, password } = req.body;
+
+//   if (!email || !password) {
+//     return res.status(400).json({ message: 'Email and password are required' });
+//   }
+
+//   try {
+//     // Check if the user exists
+//     const user = await User.findOne({ where: { email } });
+//     if (!user) {
+//       return res.status(404).json({ message: 'No account found with this email. Please sign up.' });
+//     }
+
+//     // Check if the user has a password set
+//     if (!user.password) {
+//       return res.status(400).json({ message: 'User does not have a password set. Please contact support.' });
+//     }
+
+//     // Validate the password
+//     const isPasswordValid = await bcrypt.compare(password, user.password);
+//     if (!isPasswordValid) {
+//       return res.status(401).json({ message: 'Invalid email or password' });
+//     }
+
+//     // Send a verification code
+//     await exports.resendVerificationCode({ body: { email } }, res);
+
+//   } catch (error) {
+//     console.error('Error during signin:', error);
+
+//     res.status(500).json({ error: 'Internal server error' });
+//   }
+// };
+
+// exports.signin = async (req, res) => {
+//   const { email, password } = req.body;
+
+//   if (!email || !password) {
+//     return res.status(400).json({ message: 'Email and password are required' });
+//   }
+
+//   try {
+//     // Check if the user exists
+//     const user = await User.findOne({ where: { email } });
+//     if (!user) {
+//       return res.status(404).json({ message: 'No account found with this email. Please sign up.' });
+//     }
+
+//     // Check if the user has a password set
+//     if (!user.password) {
+//       return res.status(400).json({ message: 'User does not have a password set. Please contact support.' });
+//     }
+
+//     // Validate the password
+//     const isPasswordValid = await bcrypt.compare(password, user.password);
+//     if (!isPasswordValid) {
+//       return res.status(401).json({ message: 'Invalid email or password' });
+//     }
+
+//     // Fetch user's preferences to check twoFactorAuthentication
+//     const userPreferences = await UserPreferences.findOne({ where: { UserId: user.id } });
+//     const twoFactorEnabled = userPreferences ? userPreferences.twoFactorAuthentication : false;
+
+//     if (twoFactorEnabled) {
+//       // Send verification code for 2FA
+//       const verificationCode = Math.floor(100000 + Math.random() * 900000);
+//       const codeExpiry = new Date(Date.now() + 2 * 60 * 1000); // Code expires in 2 minutes
+
+//       // Save the code and expiry in the user record
+//       user.verificationCode = verificationCode;
+//       user.verificationCodeExpires = codeExpiry;
+//       await user.save();
+
+//       // Send email
+//       await sendEmail(
+//         user.email,
+//         'Your Two-Factor Authentication Code',
+//         `Your verification code is: ${verificationCode}. It expires in 2 minutes.`
+//       );
+
+//       return res.status(200).json({
+//         message: 'Two-factor authentication code sent. Please verify to proceed.',
+//         twoFactorRequired: true,
+//       });
+//     }
+
+//     // If 2FA is disabled, log the user in directly
+//     const token = jwt.sign({ id: user.id, email: user.email }, process.env.JWT_SECRET, {
+//       expiresIn: '1h',
+//     });
+
+//     return res.status(200).json({
+//       message: 'Login successful',
+//       token,
+//       twoFactorRequired: false,
+//     });
+//   } catch (error) {
+//     console.error('Error during signin:', error);
+//     res.status(500).json({ message: 'Internal server error' });
+//   }
+// };
+
 exports.signin = async (req, res) => {
   const { email, password } = req.body;
 
@@ -317,15 +421,56 @@ exports.signin = async (req, res) => {
       return res.status(401).json({ message: 'Invalid email or password' });
     }
 
-    // Send a verification code
-    await exports.resendVerificationCode({ body: { email } }, res);
+    // Fetch user's preferences to check twoFactorAuthentication
+    const userPreferences = await UserPreferences.findOne({ where: { UserId: user.id } });
+    const twoFactorEnabled = userPreferences ? userPreferences.twoFactorAuthentication : false;
 
+    if (twoFactorEnabled) {
+      // Send verification code for 2FA
+      const verificationCode = Math.floor(100000 + Math.random() * 900000);
+      const codeExpiry = new Date(Date.now() + 2 * 60 * 1000); // Code expires in 2 minutes
+
+      // Save the code and expiry in the user record
+      user.verificationCode = verificationCode;
+      user.verificationCodeExpires = codeExpiry;
+      await user.save();
+
+      // Send email
+      await sendEmail(
+        user.email,
+        'Your Two-Factor Authentication Code',
+        `Your verification code is: ${verificationCode}. It expires in 2 minutes.`
+      );
+
+      return res.status(200).json({
+        message: 'Two-factor authentication code sent. Please verify to proceed.',
+        twoFactorRequired: true,
+      });
+    }
+
+    // If 2FA is disabled, log the user in directly
+    const token = jwt.sign({ id: user.id, email: user.email }, process.env.JWT_SECRET, {
+      expiresIn: '1h',
+    });
+
+    return res.status(200).json({
+      message: 'Login successful',
+      token,
+      twoFactorRequired: false,
+      user: {
+        id: user.id,
+        email: user.email,
+        username: user.username,  // Include if available in your User model
+        role: user.role,          // Include if available in your User model
+      },
+    });
   } catch (error) {
     console.error('Error during signin:', error);
-
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ message: 'Internal server error' });
   }
 };
+
+
 
 
 exports.verifyCode = async (req, res) => {

@@ -21,6 +21,17 @@ const authenticateJWT = (req, res, next) => {
   });
 };
 
+const authenticate = (req, res, next) => {
+  try {
+    const token = req.headers.authorization.split(' ')[1];
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    req.user = decoded; // Add user info to the request
+    next();
+  } catch (error) {
+    return res.status(401).json({ message: 'Unauthorized' });
+  }
+};
+
 // Middleware to verify if the user is an admin
 const verifyAdmin = (req, res, next) => {
   authenticateJWT(req, res, () => { // Use authenticateJWT to verify token first

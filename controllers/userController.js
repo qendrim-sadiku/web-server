@@ -261,7 +261,6 @@ exports.verifyCurrentPassword = async (req, res) => {
 
 
 
-// Update password
 exports.updatePassword = async (req, res) => {
   const { userId, currentPassword, newPassword } = req.body;
 
@@ -270,19 +269,48 @@ exports.updatePassword = async (req, res) => {
     if (!user) {
       return res.status(404).json({ message: 'User not found' });
     }
-    // Hash new password
-    const hashedNewPassword = await bcrypt.hash(newPassword, 10);
 
-    // Update user's password
+    // Verify current password
+    const isMatch = await bcrypt.compare(currentPassword, user.password);
+    if (!isMatch) {
+      return res.status(400).json({ message: 'Current password is incorrect' });
+    }
+
+    // Hash the new password and update
+    const hashedNewPassword = await bcrypt.hash(newPassword, 10);
     user.password = hashedNewPassword;
+    user.passwordLastUpdatedAt = new Date(); // Update timestamp
     await user.save();
 
-    return res.status(200).json({ message: 'Password updated successfully' });
+    return res.status(200).json({
+      message: 'Password updated successfully',
+      passwordLastUpdatedAt: user.passwordLastUpdatedAt, // Return the updated timestamp
+    });
   } catch (error) {
     console.error('Error updating password:', error);
     res.status(500).json({ message: 'Server error' });
   }
 };
+
+exports.getPasswordLastUpdated = async (req, res) => {
+  const { userId } = req.params;
+
+  try {
+    const user = await User.findByPk(userId, {
+      attributes: ['passwordLastUpdatedAt'],
+    });
+
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    res.status(200).json({ passwordLastUpdatedAt: user.passwordLastUpdatedAt });
+  } catch (error) {
+    console.error('Error fetching last password update:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
 
 
 
@@ -977,34 +1005,207 @@ exports.getUserPreferences = async (req, res) => {
   }
 };
 
+// Get two-factor authentication status
+exports.getTwoFactorAuthenticationStatus = async (req, res) => {
+  try {
+    const { userId } = req.params; // Get userId from URL parameters
+
+    // Validate if userId is provided
+    if (!userId) {
+      return res.status(400).json({ message: 'User ID is required.' });
+    }
+
+    // Fetch the user preferences using UserId
+    const userPreferences = await UserPreferences.findOne({ where: { UserId: userId } });
+
+    // Check if user preferences exist
+    if (!userPreferences) {
+      return res.status(404).json({ message: 'User preferences not found.' });
+    }
+
+    // Return the two-factor authentication status
+    res.status(200).json({
+      message: 'Two-factor authentication status fetched successfully.',
+      twoFactorAuthentication: userPreferences.twoFactorAuthentication,
+    });
+  } catch (error) {
+    console.error('Error fetching two-factor authentication status:', error);
+    res.status(500).json({ message: 'Failed to fetch two-factor authentication status.', error });
+  }
+};
+
 
 
 // Update two-factor authentication
-exports.updateTwoFactorAuthentication = async (req, res) => {
+// exports.updateTwoFactorAuthentication = async (req, res) => {
+//   try {
+//     const { userId, twoFactorAuthentication } = req.body;
+
+//     // Fetch the user preferences using UserId
+//     let userPreferences = await UserPreferences.findOne({ where: { UserId: userId } });
+
+//     // If preferences do not exist, create them
+//     if (!userPreferences) {
+//       userPreferences = await UserPreferences.create({ 
+//         UserId: userId, 
+//         twoFactorAuthentication: twoFactorAuthentication 
+//       });
+//     } else {
+//       // Update the twoFactorAuthentication field
+//       userPreferences.twoFactorAuthentication = twoFactorAuthentication;
+//       await userPreferences.save();
+//     }
+
+//     res.status(200).json({ message: 'Two-factor authentication updated successfully' });
+//   } catch (error) {
+//     console.error('Error updating two-factor authentication:', error);
+//     res.status(500).json({ message: 'Failed to update two-factor authentication', error });
+//   }
+// };
+
+// Send verification code to enable/disable twoFactorAuthentication
+exports.sendVerificationCodeForTwoFactor = async (req, res) => {
+  const { userId, enableTwoFactor } = req.body;
+
   try {
-    const { userId, twoFactorAuthentication } = req.body;
-
-    // Fetch the user preferences using UserId
-    let userPreferences = await UserPreferences.findOne({ where: { UserId: userId } });
-
-    // If preferences do not exist, create them
-    if (!userPreferences) {
-      userPreferences = await UserPreferences.create({ 
-        UserId: userId, 
-        twoFactorAuthentication: twoFactorAuthentication 
-      });
-    } else {
-      // Update the twoFactorAuthentication field
-      userPreferences.twoFactorAuthentication = twoFactorAuthentication;
-      await userPreferences.save();
+    if (!userId || typeof enableTwoFactor === 'undefined') {
+      return res.status(400).json({ message: 'User ID and enableTwoFactor flag are required' });
     }
 
-    res.status(200).json({ message: 'Two-factor authentication updated successfully' });
+    const user = await User.findByPk(userId, { attributes: ['id', 'email'] });
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    // Find or create user preferences
+    let preferences = await UserPreferences.findOne({ where: { UserId: user.id } });
+    if (!preferences) {
+      preferences = await UserPreferences.create({ UserId: user.id });
+    }
+
+    // Generate a new 6-digit verification code
+    const verificationCode = Math.floor(100000 + Math.random() * 900000);
+
+    // Set code expiry to 2 minutes from now
+    const expiry = new Date();
+    expiry.setMinutes(expiry.getMinutes() + 2);
+
+    // Save code and expiry in userPreferences
+    preferences.twoFactorVerificationCode = verificationCode;
+    preferences.twoFactorVerificationCodeExpires = expiry;
+    preferences.twoFactorRequestedValue = enableTwoFactor; // Store the requested value (true/false) to be applied upon verification
+    await preferences.save();
+
+    // Send the verification code to user's email
+    await sendEmail(
+      user.email,
+      'Two-Factor Authentication Change Verification',
+      `Your verification code is: ${verificationCode}. It will expire at ${expiry.toLocaleTimeString()}.`
+    );
+
+    return res.status(200).json({
+      message: 'Verification code sent successfully for changing two-factor authentication setting. It will expire in 2 minutes.'
+    });
   } catch (error) {
-    console.error('Error updating two-factor authentication:', error);
-    res.status(500).json({ message: 'Failed to update two-factor authentication', error });
+    console.error('Error sending two-factor verification code:', error);
+    return res.status(500).json({ error: 'Internal server error' });
   }
 };
+
+// Resend verification code for twoFactorAuthentication
+exports.resendVerificationCodeForTwoFactor = async (req, res) => {
+  const { userId } = req.body;
+
+  try {
+    if (!userId) {
+      return res.status(400).json({ message: 'User ID is required.' });
+    }
+
+    const user = await User.findByPk(userId, { attributes: ['id', 'email'] });
+    if (!user) {
+      return res.status(404).json({ message: 'User not found.' });
+    }
+
+    // Fetch user preferences
+    let preferences = await UserPreferences.findOne({ where: { UserId: user.id } });
+    if (!preferences) {
+      return res.status(404).json({ message: 'User preferences not found. Please request code first.' });
+    }
+
+    // Generate a new 6-digit verification code
+    const verificationCode = Math.floor(100000 + Math.random() * 900000);
+    const expiry = new Date();
+    expiry.setMinutes(expiry.getMinutes() + 2);
+
+    // Update preferences with new code
+    preferences.twoFactorVerificationCode = verificationCode;
+    preferences.twoFactorVerificationCodeExpires = expiry;
+    await preferences.save();
+
+    // Resend the verification code to the user's email
+    await sendEmail(
+      user.email,
+      'Resend: Two-Factor Authentication Change Verification',
+      `Your new verification code is: ${verificationCode}. It expires in 2 minutes.`
+    );
+
+    return res.status(200).json({ message: 'Verification code resent successfully.' });
+  } catch (error) {
+    console.error('Error resending two-factor verification code:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+// Verify the twoFactor code and update the preference if valid
+exports.verifyTwoFactorCodeAndUpdate = async (req, res) => {
+  const { userId, verificationCode } = req.body;
+
+  try {
+    if (!userId || !verificationCode) {
+      return res.status(400).json({ message: 'User ID and verification code are required' });
+    }
+
+    const user = await User.findByPk(userId, { attributes: ['id', 'email'] });
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    // Fetch user preferences
+    const preferences = await UserPreferences.findOne({ where: { UserId: user.id } });
+    if (!preferences || !preferences.twoFactorVerificationCode || !preferences.twoFactorVerificationCodeExpires) {
+      return res.status(400).json({ message: 'No verification code was requested for two-factor changes.' });
+    }
+
+    // Verify the code
+    const currentTime = new Date();
+    const expiryTime = new Date(preferences.twoFactorVerificationCodeExpires);
+
+    if (
+      preferences.twoFactorVerificationCode !== parseInt(verificationCode, 10) ||
+      currentTime > expiryTime
+    ) {
+      return res.status(400).json({ message: 'Invalid or expired verification code' });
+    }
+
+    // Code is valid, update twoFactorAuthentication setting
+    preferences.twoFactorAuthentication = preferences.twoFactorRequestedValue;
+    // Clear code and expiry from preferences
+    preferences.twoFactorVerificationCode = null;
+    preferences.twoFactorVerificationCodeExpires = null;
+    preferences.twoFactorRequestedValue = null;
+
+    await preferences.save();
+
+    return res.status(200).json({ 
+      message: 'Two-factor authentication setting updated successfully.',
+      twoFactorAuthentication: preferences.twoFactorAuthentication
+    });
+  } catch (error) {
+    console.error('Error verifying two-factor code and updating:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
 
 // Update email notifications preference
 exports.updateEmailNotifications = async (req, res) => {
@@ -1817,5 +2018,188 @@ exports.getUserDescription = async (req, res) => {
   } catch (error) {
     console.error('Error fetching user description:', error);
     res.status(500).send({ message: 'Error fetching user description', error });
+  }
+};
+
+
+
+exports.sendForgotPasswordCode = async (req, res) => {
+  const { userId, email } = req.body; // Expect userId and email from the request body
+
+  try {
+    // Validate that userId and email are provided
+    if (!userId || !email) {
+      return res.status(400).json({ message: 'User ID and email are required.' });
+    }
+
+    // Find the user by ID
+    const user = await User.findByPk(userId);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found.' });
+    }
+
+    // Verify if the provided email matches the user's email
+    if (user.email !== email) {
+      return res.status(400).json({ message: 'The provided email does not match the user account.' });
+    }
+
+    // Generate a 6-digit verification code and set expiry (2 minutes)
+    const verificationCode = Math.floor(100000 + Math.random() * 900000);
+    const codeExpiry = new Date(Date.now() + 2 * 60 * 1000); // 2 minutes validity
+
+    // Save the code and expiry in the user record
+    user.verificationCode = verificationCode;
+    user.verificationCodeExpires = codeExpiry;
+    await user.save();
+
+    // Send the code via email
+    await sendEmail(
+      email,
+      'Reset Password Code',
+      `Your verification code is: ${verificationCode}. It expires in 2 minutes.`
+    );
+
+    // Respond with success message
+    res.status(200).json({ message: 'Verification code sent successfully.' });
+  } catch (error) {
+    console.error('Error sending verification code:', error);
+    res.status(500).json({ message: 'Failed to send verification code.' });
+  }
+};
+
+exports.resendForgotPasswordCode = async (req, res) => {
+  const { userId, email } = req.body; // Expect userId and email from the request body
+
+  try {
+    // Validate that userId and email are provided
+    if (!userId || !email) {
+      return res.status(400).json({ message: 'User ID and email are required.' });
+    }
+
+    // Find the user by ID
+    const user = await User.findByPk(userId);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found.' });
+    }
+
+    // Verify if the provided email matches the user's email
+    if (user.email !== email) {
+      return res.status(400).json({ message: 'The provided email does not match the user account.' });
+    }
+
+    // Generate a new 6-digit verification code and set expiry (2 minutes)
+    const verificationCode = Math.floor(100000 + Math.random() * 900000);
+    const codeExpiry = new Date(Date.now() + 2 * 60 * 1000); // 2 minutes validity
+
+    // Save the new code and expiry in the user record
+    user.verificationCode = verificationCode;
+    user.verificationCodeExpires = codeExpiry;
+    await user.save();
+
+    // Resend the code via email
+    await sendEmail(
+      email,
+      'Resend: Reset Password Code',
+      `Your new verification code is: ${verificationCode}. It expires in 2 minutes.`
+    );
+
+    // Respond with success message
+    res.status(200).json({ message: 'Verification code resent successfully.' });
+  } catch (error) {
+    console.error('Error resending verification code:', error);
+    res.status(500).json({ message: 'Failed to resend verification code.' });
+  }
+};
+exports.resendForgotPasswordCode = async (req, res) => {
+  const { userId, email } = req.body; // Expect userId and email from the request body
+
+  try {
+    // Validate that userId and email are provided
+    if (!userId || !email) {
+      return res.status(400).json({ message: 'User ID and email are required.' });
+    }
+
+    // Find the user by ID
+    const user = await User.findByPk(userId);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found.' });
+    }
+
+    // Verify if the provided email matches the user's email
+    if (user.email !== email) {
+      return res.status(400).json({ message: 'The provided email does not match the user account.' });
+    }
+
+    // Generate a new 6-digit verification code and set expiry (2 minutes)
+    const verificationCode = Math.floor(100000 + Math.random() * 900000);
+    const codeExpiry = new Date(Date.now() + 2 * 60 * 1000); // 2 minutes validity
+
+    // Save the new code and expiry in the user record
+    user.verificationCode = verificationCode;
+    user.verificationCodeExpires = codeExpiry;
+    await user.save();
+
+    // Resend the code via email
+    await sendEmail(
+      email,
+      'Resend: Reset Password Code',
+      `Your new verification code is: ${verificationCode}. It expires in 2 minutes.`
+    );
+
+    // Respond with success message
+    res.status(200).json({ message: 'Verification code resent successfully.' });
+  } catch (error) {
+    console.error('Error resending verification code:', error);
+    res.status(500).json({ message: 'Failed to resend verification code.' });
+  }
+};
+
+
+
+
+
+// Verify the 6-digit code
+exports.verifyForgotPasswordCode = async (req, res) => {
+  const { email, code } = req.body;
+
+  try {
+    const user = await User.findOne({ where: { email } });
+    if (!user) return res.status(404).json({ message: 'Email not found' });
+
+    // Check if the code matches and is not expired
+    const currentTime = new Date();
+    if (user.verificationCode !== parseInt(code) || currentTime > new Date(user.verificationCodeExpires)) {
+      return res.status(400).json({ message: 'Invalid or expired code' });
+    }
+
+    // Code is valid, clear it and allow password reset
+    user.verificationCode = null;
+    user.verificationCodeExpires = null;
+    await user.save();
+
+    res.status(200).json({ message: 'Code verified successfully. Proceed to reset your password.' });
+  } catch (error) {
+    console.error('Error verifying code:', error);
+    res.status(500).json({ message: 'Failed to verify code' });
+  }
+};
+
+// Reset the password without requiring the current password
+exports.resetPasswordWithoutCurrent = async (req, res) => {
+  const { email, newPassword } = req.body;
+
+  try {
+    const user = await User.findOne({ where: { email } });
+    if (!user) return res.status(404).json({ message: 'Email not found' });
+
+    // Hash and update the new password
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    user.password = hashedPassword;
+    await user.save();
+
+    res.status(200).json({ message: 'Password reset successfully' });
+  } catch (error) {
+    console.error('Error resetting password:', error);
+    res.status(500).json({ message: 'Failed to reset password' });
   }
 };
