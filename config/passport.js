@@ -1,3 +1,4 @@
+// passport.js
 const passport = require('passport');
 const GoogleStrategy = require('passport-google-oauth20').Strategy;
 const FacebookStrategy = require('passport-facebook').Strategy;
@@ -24,7 +25,7 @@ passport.use(
     {
       clientID: process.env.GOOGLE_CLIENT_ID,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-      callbackURL: `${process.env.BASE_URL}/auth/google/callback`, // Use dynamic callback URL from environment variable
+      callbackURL: 'https://web-server-7hp1.onrender.com/auth/google/callback',
       passReqToCallback: true, // Allows us to pass back the entire request to the callback
     },
     async (req, accessToken, refreshToken, profile, done) => {
@@ -73,7 +74,7 @@ passport.use(
     {
       clientID: process.env.FACEBOOK_CLIENT_ID,
       clientSecret: process.env.FACEBOOK_CLIENT_SECRET,
-      callbackURL: `${process.env.BASE_URL}/auth/facebook/callback`, // Use dynamic callback URL from environment variable
+      callbackURL: 'https://web-server-7hp1.onrender.com/auth/facebook/callback',
       profileFields: ['id', 'emails', 'name'], // Ensure 'emails' is included
       passReqToCallback: true, // Allows us to pass back the entire request to the callback
     },
