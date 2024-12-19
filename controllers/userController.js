@@ -1717,6 +1717,28 @@ exports.removeFcmToken = async (req, res) => {
   }
 };
 
+// Controller method to get FCM token for a user
+exports.getFcmToken = async (req, res) => {
+  const { userId } = req.params;
+
+  try {
+    if (!userId) {
+      return res.status(400).json({ message: 'User ID is required' });
+    }
+
+    const user = await User.findByPk(userId);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    // Return the FCM token
+    res.status(200).json({ fcmToken: user.fcmToken });
+  } catch (error) {
+    console.error('Error fetching FCM token:', error);
+    res.status(500).json({ message: 'Failed to fetch FCM token', error });
+  }
+};
+
 
 
 
