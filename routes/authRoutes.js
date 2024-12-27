@@ -16,6 +16,7 @@ router.post('/auth/verify-code', authController.verifyCode);
 router.post('/auth/resend-code', authController.resendVerificationCode);
 
 
+
 // Google Authentication - Redirect to Google's OAuth 2.0 page
 // router.get(
 //   '/auth/google',
@@ -118,7 +119,7 @@ router.get('/auth/google/callback', (req, res, next) => {
   passport.authenticate('google', (err, user, info) => {
     if (err) return next(err);
     if (!user) {
-      const frontendUrl = 'https://aroit.com';
+      const frontendUrl = 'http://localhost:4200';
       res.redirect(`${frontendUrl}/login?error=${encodeURIComponent(info.message)}`);
     } else {
       const token = jwt.sign(
@@ -135,7 +136,7 @@ router.get('/auth/google/callback', (req, res, next) => {
       };
 
       const userBase64 = Buffer.from(JSON.stringify(userData)).toString('base64');
-      const frontendUrl = 'https://aroit.com';
+      const frontendUrl = 'http://localhost:4200';
       res.redirect(`${frontendUrl}/welcome?token=${token}&user=${userBase64}`);
     }
   })(req, res, next);

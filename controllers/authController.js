@@ -4,6 +4,10 @@ const { Op } = require('sequelize');
 const User = require('../models/User');
 const sendEmail = require('../config/emailService');
 const UserPreferences = require('../models/UserProfile/UserPreferences');
+const crypto = require('crypto');
+const { verifyRegistrationResponse, verifyAuthenticationResponse } = require('@simplewebauthn/server');
+const { rpID, origin } = require('../config/webauthConfig');
+
 
 
 
@@ -257,6 +261,43 @@ exports.authenticateToken = (req, res, next) => {
 //   }
 // };
 
+// exports.signup = async (req, res) => {
+//   const { email, password, name } = req.body;
+
+//   if (!email || !password || !name) {
+//     return res.status(400).json({ message: 'Email, password, and name are required' });
+//   }
+
+//   try {
+//     // Check if the user already exists
+//     const existingUser = await User.findOne({ where: { email } });
+//     if (existingUser) {
+//       return res.status(409).json({ message: 'This email is already in use. Please log in instead.' });
+//     }
+
+//     // Hash the password and create the user
+//     const hashedPassword = await bcrypt.hash(password, 10);
+//     const newUser = await User.create({
+//       email,
+//       password: hashedPassword,
+//       name,
+//     });
+
+//     // Send a verification code
+//     await exports.resendVerificationCode({ body: { email } }, res);
+
+//   } catch (error) {
+//     console.error('Error during signup:', error);
+
+//     if (error.name === 'SequelizeValidationError') {
+//       return res.status(400).json({ message: 'Invalid input data', details: error.errors });
+//     }
+
+//     res.status(500).json({ error: 'Internal server error' });
+//   }
+// };
+
+
 exports.signup = async (req, res) => {
   const { email, password, name } = req.body;
 
@@ -279,8 +320,26 @@ exports.signup = async (req, res) => {
       name,
     });
 
-    // Send a verification code
+    // Generate a JWT token
+    const token = jwt.sign(
+      { id: newUser.id, email: newUser.email },
+      process.env.JWT_SECRET,
+      { expiresIn: '7d' } // Adjust the expiration time as needed
+    );
+
+    // Optionally, send a verification code
     await exports.resendVerificationCode({ body: { email } }, res);
+
+    // Return success response with token
+    return res.status(201).json({
+      message: 'Signup successful',
+      token,
+      user: {
+        id: newUser.id,
+        email: newUser.email,
+        name: newUser.name,
+      },
+    });
 
   } catch (error) {
     console.error('Error during signup:', error);
@@ -292,6 +351,7 @@ exports.signup = async (req, res) => {
     res.status(500).json({ error: 'Internal server error' });
   }
 };
+
 
 // exports.signin = async (req, res) => {
 //   const { email, password } = req.body;
@@ -450,7 +510,7 @@ exports.signin = async (req, res) => {
 
     // If 2FA is disabled, log the user in directly
     const token = jwt.sign({ id: user.id, email: user.email }, process.env.JWT_SECRET, {
-      expiresIn: '1h',
+      expiresIn: '7d',
     });
 
     return res.status(200).json({

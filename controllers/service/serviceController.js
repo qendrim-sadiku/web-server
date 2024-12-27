@@ -597,18 +597,111 @@ exports.getServicesByTrainer = async (req, res) => {
 };
 
 // Get multiple services by an array of IDs using a GET request
+// exports.getMultipleServicesByIds = async (req, res) => {
+//   try {
+//     const { ids } = req.query; // Expecting service IDs as a query parameter (e.g., ?ids=1,2,3)
+
+//     // Convert ids from a string to an array of numbers
+//     const idsArray = ids ? ids.split(',').map(Number) : [];
+
+//     console.log('Received IDs:', idsArray); // Log the parsed IDs
+
+//     // Ensure that idsArray is not empty
+//     if (!Array.isArray(idsArray) || idsArray.length === 0) {
+//       return res.status(400).json({ error: 'No service IDs provided' });
+//     }
+
+//     // Fetch services that match the provided IDs
+//     const services = await Service.findAll({
+//       where: {
+//         id: { [Op.in]: idsArray }, // Sequelize's `Op.in` to match any of the given IDs
+//       },
+//       include: [
+//         {
+//           model: Trainer,
+//           attributes: ['id', 'name'],
+//         },
+//         {
+//           model: ServiceDetails,
+//           attributes: [
+//             'fullDescription',
+//             'highlights',
+//             'whatsIncluded',
+//             'whatsNotIncluded',
+//             'recommendations',
+//             'coachInfo',
+//             'serviceImage', // Include serviceImage
+//           ],
+//         },
+//         {
+//           model: SubCategory,
+//           attributes: ['id', 'name'],
+//           include: [
+//             {
+//               model: Category,
+//               attributes: ['id', 'name'],
+//             },
+//           ],
+//         },
+//       ],
+//     });
+
+//     console.log('Found Services:', services); // Log the services retrieved
+
+//     // Check if any services were found
+//     if (services.length === 0) {
+//       return res
+//         .status(404)
+//         .json({ error: 'No services found for the given IDs' });
+//     }
+
+//     // Format the response
+//     const result = services.map((service) => ({
+//       id: service.id,
+//       name: service.name,
+//       type: service.type, // Add type here
+
+//       description: service.description,
+//       image: service.image,
+//       duration: service.duration,
+//       hourlyRate: service.hourlyRate,
+//       level: service.level,
+//       subCategoryId: service.SubCategory.id,
+//       subCategoryName: service.SubCategory.name,
+//       categoryId: service.SubCategory.Category.id,
+//       categoryName: service.SubCategory.Category.name,
+//       trainers: service.Trainers.map((trainer) => ({
+//         id: trainer.id,
+//         name: trainer.name,
+//       })),
+//       details: service.ServiceDetail,
+//     }));
+
+//     res.status(200).json(result);
+//   } catch (error) {
+//     console.error('Error fetching services:', error.message); // Log any errors
+//     res.status(500).json({ error: error.message });
+//   }
+// };
+
+// Get multiple services by an array of IDs using a GET request
 exports.getMultipleServicesByIds = async (req, res) => {
   try {
     const { ids } = req.query; // Expecting service IDs as a query parameter (e.g., ?ids=1,2,3)
 
+    // Validate that `ids` exists and is not empty
+    if (!ids) {
+      return res.status(400).json({ error: 'No service IDs provided in the query parameters.' });
+    }
+
     // Convert ids from a string to an array of numbers
-    const idsArray = ids ? ids.split(',').map(Number) : [];
+    const idsArray = ids.split(',').map((id) => Number(id.trim())).filter((id) => !isNaN(id));
 
     console.log('Received IDs:', idsArray); // Log the parsed IDs
 
-    // Ensure that idsArray is not empty
-    if (!Array.isArray(idsArray) || idsArray.length === 0) {
-      return res.status(400).json({ error: 'No service IDs provided' });
+    // Ensure that idsArray is not empty after parsing
+    if (idsArray.length === 0) {
+      return res.status(400).json({ error: 'Invalid or empty service IDs provided.' });
     }
 
     // Fetch services that match the provided IDs
@@ -649,10 +742,8 @@ exports.getMultipleServicesByIds = async (req, res) => {
     console.log('Found Services:', services); // Log the services retrieved
 
     // Check if any services were found
-    if (services.length === 0) {
-      return res
-        .status(404)
-        .json({ error: 'No services found for the given IDs' });
+    if (!services || services.length === 0) {
+      return res.status(404).json({ error: 'No services found for the given IDs.' });
     }
 
     // Format the response
@@ -660,7 +751,6 @@ exports.getMultipleServicesByIds = async (req, res) => {
       id: service.id,
       name: service.name,
       type: service.type, // Add type here
-
       description: service.description,
       image: service.image,
       duration: service.duration,
@@ -674,7 +764,7 @@ exports.getMultipleServicesByIds = async (req, res) => {
         id: trainer.id,
         name: trainer.name,
       })),
-      details: service.ServiceDetail,
+      details: service.ServiceDetails, // Updated relationship name
     }));
 
     res.status(200).json(result);
@@ -683,6 +773,7 @@ exports.getMultipleServicesByIds = async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 };
+
 
 // Fetch all service types
 exports.getAllServiceTypes = async (req, res) => {

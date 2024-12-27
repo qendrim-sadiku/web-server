@@ -268,7 +268,6 @@ const createSampleTrainers = async () => {
     }
 };
 
-// Create sample services and assign default trainers
 const createSampleServices = async () => {
     try {
         const subCategories = await SubCategory.findAll();
@@ -321,8 +320,8 @@ const createSampleServices = async () => {
                     trainer.yearsOfExperience >= 3 // Example: filtering trainers with at least 3 years of experience
                 );
 
-                // Ensure at least 2 trainers
-                const numberOfTrainersNeeded = 2 - matchingTrainers.length;
+                // Ensure at least 10 trainers
+                const numberOfTrainersNeeded = 10 - matchingTrainers.length;
                 if (numberOfTrainersNeeded > 0) {
                     // Create additional trainers if not enough available
                     for (let j = 0; j < numberOfTrainersNeeded; j++) {
@@ -347,7 +346,7 @@ const createSampleServices = async () => {
                     }
                 }
 
-                for (const trainer of matchingTrainers.slice(0, 2)) { // Assign only 2 trainers per service
+                for (const trainer of matchingTrainers.slice(0, 10)) { // Assign up to 10 trainers per service
                     await ServiceTrainer.create({
                         serviceId: service.id,
                         trainerId: trainer.id

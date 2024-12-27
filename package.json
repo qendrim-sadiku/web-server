@@ -12,6 +12,7 @@
   "license": "ISC",
   "dependencies": {
     "@faker-js/faker": "^8.4.1",
+    "@simplewebauthn/server": "^13.0.0",
     "argon2": "^0.40.3",
     "axios": "^1.7.2",
     "bcrypt": "^5.1.1",
@@ -38,6 +39,7 @@
     "twilio": "^5.3.4"
   },
   "devDependencies": {
-    "nodemon": "^3.1.4"
+    "nodemon": "^3.1.4",
+    "sequelize-cli": "^6.6.2"
   }
 }

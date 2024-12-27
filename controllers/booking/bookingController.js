@@ -171,6 +171,443 @@ exports.createBooking = async (req, res) => {
   }
 };
 
+// exports.createBooking = async (req, res) => {
+//   const transaction = await sequelize.transaction();
+//   try {
+//     const { userId, serviceId, trainerId: providedTrainerId, address, participants = [], recurrence } = req.body;
+
+//     // Validate recurrence input
+//     if (!recurrence || !recurrence.type) {
+//       return res.status(400).json({ message: 'Recurrence type is required (daily, weekly, monthly, or exact)' });
+//     }
+
+//     const { type, dates: exactDates, interval, endDate } = recurrence;
+
+//     // Ensure correct structure for exact type
+//     if (type === 'exact' && (!exactDates || exactDates.length === 0)) {
+//       return res.status(400).json({ message: 'Exact dates are required for exact recurrence type' });
+//     }
+
+//     // Validate interval and endDate for recurring bookings
+//     if (type !== 'exact' && (!interval || !endDate)) {
+//       return res.status(400).json({ message: 'Interval and endDate are required for recurring bookings' });
+//     }
+
+//     // Fetch the service to get the default trainer if trainerId is not provided
+//     let trainerId = providedTrainerId;
+//     if (!trainerId) {
+//       const service = await Service.findByPk(serviceId);
+//       if (!service || !service.defaultTrainerId) {
+//         return res.status(400).json({ message: 'No trainer specified and no default trainer found for the service' });
+//       }
+//       trainerId = service.defaultTrainerId;
+//     }
+
+//     // Fetch the trainer to get the hourly rate
+//     const trainer = await Trainer.findByPk(trainerId);
+//     if (!trainer) {
+//       return res.status(404).json({ message: 'Trainer not found' });
+//     }
+
+//     const createdBookings = [];
+
+//     // Generate dates based on recurrence type
+//     let bookingDates = [];
+//     if (type === 'exact') {
+//       bookingDates = exactDates;
+//     } else {
+//       let currentDate = new Date();
+//       while (currentDate <= new Date(endDate)) {
+//         bookingDates.push({
+//           date: currentDate.toISOString().split('T')[0], // Format date as YYYY-MM-DD
+//           startTime: "12:00:00", // Default start time, adjust as needed
+//           endTime: "14:00:00"   // Default end time, adjust as needed
+//         });
+
+//         if (type === 'daily') {
+//           currentDate.setDate(currentDate.getDate() + interval);
+//         } else if (type === 'weekly') {
+//           currentDate.setDate(currentDate.getDate() + interval * 7);
+//         } else if (type === 'monthly') {
+//           currentDate.setMonth(currentDate.getMonth() + interval);
+//         }
+//       }
+//     }
+
+//     // Process each generated date
+//     for (let singleDate of bookingDates) {
+//       const { date, startTime, endTime } = singleDate;
+
+//       if (!date || !startTime || !endTime) {
+//         return res.status(400).json({ message: 'Date, start time, and end time are required for each booking session' });
+//       }
+
+//       const startDateTime = new Date(`${date}T${startTime}`);
+//       const endDateTime = new Date(`${date}T${endTime}`);
+
+//       if (isNaN(startDateTime.getTime()) || isNaN(endDateTime.getTime())) {
+//         return res.status(400).json({ message: 'Invalid date format for start time or end time' });
+//       }
+
+//       const hours = (endDateTime - startDateTime) / (1000 * 60 * 60); // Convert milliseconds to hours
+//       if (hours <= 0) {
+//         return res.status(400).json({ message: 'End time must be greater than start time' });
+//       }
+
+//       const totalPrice = hours * trainer.hourlyRate;
+
+//       // Create the booking for the single date
+//       const booking = await Booking.create(
+//         {
+//           userId,
+//           serviceId,
+//           trainerId,
+//           address,
+//           totalPrice,
+//         },
+//         { transaction }
+//       );
+
+//       // Associate participants with the current booking
+//       if (participants.length > 0) {
+//         const participantData = participants.map((participant) => ({
+//           ...participant,
+//           bookingId: booking.id,
+//         }));
+//         await Participant.bulkCreate(participantData, { transaction });
+//       }
+
+//       // Create the booking session
+//       await BookingDate.create(
+//         {
+//           date,
+//           startTime,
+//           endTime,
+//           bookingId: booking.id,
+//           sessionNumber: 1, // Since this is a single session per booking
+//         },
+//         { transaction }
+//       );
+
+//       createdBookings.push({
+//         bookingId: booking.id,
+//         userId: booking.userId,
+//         serviceId: booking.serviceId,
+//         trainerId: booking.trainerId,
+//         address: booking.address,
+//         totalPrice: booking.totalPrice,
+//         participants,
+//         session: {
+//           date,
+//           startTime,
+//           endTime,
+//         },
+//       });
+//     }
+
+//     await transaction.commit();
+
+//     // Return all created bookings
+//     res.status(201).json({ bookings: createdBookings });
+//   } catch (error) {
+//     await transaction.rollback();
+//     res.status(500).json({ error: error.message });
+//   }
+// };
+
+// exports.createBooking = async (req, res) => {
+//   const transaction = await sequelize.transaction();
+//   try {
+//     const { userId, serviceId, trainerId: providedTrainerId, address, participants = [], recurrence } = req.body;
+
+//     // Validate recurrence input
+//     if (!recurrence || !recurrence.type) {
+//       return res.status(400).json({ message: 'Recurrence type is required (daily, weekly, monthly, or exact)' });
+//     }
+
+//     const { type, dates: exactDates, startDate, endDate } = recurrence;
+
+//     // Ensure correct structure for exact type
+//     if (type === 'exact' && (!exactDates || exactDates.length === 0)) {
+//       return res.status(400).json({ message: 'Exact dates are required for exact recurrence type' });
+//     }
+
+//     // Validate startDate and endDate for recurring bookings
+//     if (type !== 'exact' && (!startDate || !endDate)) {
+//       return res.status(400).json({ message: 'Start date and end date are required for recurring bookings' });
+//     }
+
+//     // Fetch the service to get the default trainer if trainerId is not provided
+//     let trainerId = providedTrainerId;
+//     if (!trainerId) {
+//       const service = await Service.findByPk(serviceId);
+//       if (!service || !service.defaultTrainerId) {
+//         return res.status(400).json({ message: 'No trainer specified and no default trainer found for the service' });
+//       }
+//       trainerId = service.defaultTrainerId;
+//     }
+
+//     // Fetch the trainer to get the hourly rate
+//     const trainer = await Trainer.findByPk(trainerId);
+//     if (!trainer) {
+//       return res.status(404).json({ message: 'Trainer not found' });
+//     }
+
+//     const createdBookings = [];
+
+//     // Generate dates based on recurrence type
+//     let bookingDates = [];
+//     if (type === 'exact') {
+//       bookingDates = exactDates;
+//     } else {
+//       let currentDate = new Date(startDate);
+//       while (currentDate <= new Date(endDate)) {
+//         bookingDates.push({
+//           date: currentDate.toISOString().split('T')[0], // Format date as YYYY-MM-DD
+//           startTime: "12:00:00", // Default start time, adjust as needed
+//           endTime: "14:00:00"   // Default end time, adjust as needed
+//         });
+
+//         if (type === 'daily') {
+//           currentDate.setDate(currentDate.getDate() + 1);
+//         } else if (type === 'weekly') {
+//           currentDate.setDate(currentDate.getDate() + 7);
+//         } else if (type === 'monthly') {
+//           currentDate.setMonth(currentDate.getMonth() + 1);
+//         }
+//       }
+//     }
+
+//     // Process each generated date
+//     for (let singleDate of bookingDates) {
+//       const { date, startTime, endTime } = singleDate;
+
+//       if (!date || !startTime || !endTime) {
+//         return res.status(400).json({ message: 'Date, start time, and end time are required for each booking session' });
+//       }
+
+//       const startDateTime = new Date(`${date}T${startTime}`);
+//       const endDateTime = new Date(`${date}T${endTime}`);
+
+//       if (isNaN(startDateTime.getTime()) || isNaN(endDateTime.getTime())) {
+//         return res.status(400).json({ message: 'Invalid date format for start time or end time' });
+//       }
+
+//       const hours = (endDateTime - startDateTime) / (1000 * 60 * 60); // Convert milliseconds to hours
+//       if (hours <= 0) {
+//         return res.status(400).json({ message: 'End time must be greater than start time' });
+//       }
+
+//       const totalPrice = hours * trainer.hourlyRate;
+
+//       // Create the booking for the single date
+//       const booking = await Booking.create(
+//         {
+//           userId,
+//           serviceId,
+//           trainerId,
+//           address,
+//           totalPrice,
+//         },
+//         { transaction }
+//       );
+
+//       // Associate participants with the current booking
+//       if (participants.length > 0) {
+//         const participantData = participants.map((participant) => ({
+//           ...participant,
+//           bookingId: booking.id,
+//         }));
+//         await Participant.bulkCreate(participantData, { transaction });
+//       }
+
+//       // Create the booking session
+//       await BookingDate.create(
+//         {
+//           date,
+//           startTime,
+//           endTime,
+//           bookingId: booking.id,
+//           sessionNumber: 1, // Since this is a single session per booking
+//         },
+//         { transaction }
+//       );
+
+//       createdBookings.push({
+//         bookingId: booking.id,
+//         userId: booking.userId,
+//         serviceId: booking.serviceId,
+//         trainerId: booking.trainerId,
+//         address: booking.address,
+//         totalPrice: booking.totalPrice,
+//         participants,
+//         session: {
+//           date,
+//           startTime,
+//           endTime,
+//         },
+//       });
+//     }
+
+//     await transaction.commit();
+
+//     // Return all created bookings
+//     res.status(201).json({ bookings: createdBookings });
+//   } catch (error) {
+//     await transaction.rollback();
+//     res.status(500).json({ error: error.message });
+//   }
+// };
+
+// exports.createBooking = async (req, res) => {
+//   const transaction = await sequelize.transaction();
+//   try {
+//     const { userId, serviceId, trainerId: providedTrainerId, address, participants = [], recurrence } = req.body;
+
+//     // Validate recurrence input
+//     if (!recurrence || !recurrence.type) {
+//       return res.status(400).json({ message: 'Recurrence type is required (daily, weekly, monthly, or exact)' });
+//     }
+
+//     const { type, dates: exactDates, startDate, endDate, timeSlots } = recurrence;
+
+//     // Ensure correct structure for exact type
+//     if (type === 'exact' && (!exactDates || exactDates.length === 0)) {
+//       return res.status(400).json({ message: 'Exact dates are required for exact recurrence type' });
+//     }
+
+//     // Validate startDate, endDate, and timeSlots for recurring bookings
+//     if (type !== 'exact' && (!startDate || !endDate || !timeSlots || timeSlots.length === 0)) {
+//       return res.status(400).json({ message: 'Start date, end date, and time slots are required for recurring bookings' });
+//     }
+
+//     // Fetch the service to get the default trainer if trainerId is not provided
+//     let trainerId = providedTrainerId;
+//     if (!trainerId) {
+//       const service = await Service.findByPk(serviceId);
+//       if (!service || !service.defaultTrainerId) {
+//         return res.status(400).json({ message: 'No trainer specified and no default trainer found for the service' });
+//       }
+//       trainerId = service.defaultTrainerId;
+//     }
+
+//     // Fetch the trainer to get the hourly rate
+//     const trainer = await Trainer.findByPk(trainerId);
+//     if (!trainer) {
+//       return res.status(404).json({ message: 'Trainer not found' });
+//     }
+
+//     const createdBookings = [];
+
+//     // Generate dates based on recurrence type
+//     let bookingDates = [];
+//     if (type === 'exact') {
+//       bookingDates = exactDates;
+//     } else {
+//       let currentDate = new Date(startDate);
+//       while (currentDate <= new Date(endDate)) {
+//         for (let timeSlot of timeSlots) {
+//           const { startTime, endTime } = timeSlot;
+//           bookingDates.push({
+//             date: currentDate.toISOString().split('T')[0], // Format date as YYYY-MM-DD
+//             startTime,
+//             endTime
+//           });
+//         }
+
+//         if (type === 'daily') {
+//           currentDate.setDate(currentDate.getDate() + 1);
+//         } else if (type === 'weekly') {
+//           currentDate.setDate(currentDate.getDate() + 7);
+//         } else if (type === 'monthly') {
+//           currentDate.setMonth(currentDate.getMonth() + 1);
+//         }
+//       }
+//     }
+
+//     // Process each generated date
+//     for (let singleDate of bookingDates) {
+//       const { date, startTime, endTime } = singleDate;
+
+//       if (!date || !startTime || !endTime) {
+//         return res.status(400).json({ message: 'Date, start time, and end time are required for each booking session' });
+//       }
+
+//       const startDateTime = new Date(`${date}T${startTime}`);
+//       const endDateTime = new Date(`${date}T${endTime}`);
+
+//       if (isNaN(startDateTime.getTime()) || isNaN(endDateTime.getTime())) {
+//         return res.status(400).json({ message: 'Invalid date format for start time or end time' });
+//       }
+
+//       const hours = (endDateTime - startDateTime) / (1000 * 60 * 60); // Convert milliseconds to hours
+//       if (hours <= 0) {
+//         return res.status(400).json({ message: 'End time must be greater than start time' });
+//       }
+
+//       const totalPrice = hours * trainer.hourlyRate;
+
+//       // Create the booking for the single date
+//       const booking = await Booking.create(
+//         {
+//           userId,
+//           serviceId,
+//           trainerId,
+//           address,
+//           totalPrice,
+//         },
+//         { transaction }
+//       );
+
+//       // Associate participants with the current booking
+//       if (participants.length > 0) {
+//         const participantData = participants.map((participant) => ({
+//           ...participant,
+//           bookingId: booking.id,
+//         }));
+//         await Participant.bulkCreate(participantData, { transaction });
+//       }
+
+//       // Create the booking session
+//       await BookingDate.create(
+//         {
+//           date,
+//           startTime,
+//           endTime,
+//           bookingId: booking.id,
+//           sessionNumber: 1, // Since this is a single session per booking
+//         },
+//         { transaction }
+//       );
+
+//       createdBookings.push({
+//         bookingId: booking.id,
+//         userId: booking.userId,
+//         serviceId: booking.serviceId,
+//         trainerId: booking.trainerId,
+//         address: booking.address,
+//         totalPrice: booking.totalPrice,
+//         participants,
+//         session: {
+//           date,
+//           startTime,
+//           endTime,
+//         },
+//       });
+//     }
+
+//     await transaction.commit();
+
+//     // Return all created bookings
+//     res.status(201).json({ bookings: createdBookings });
+//   } catch (error) {
+//     await transaction.rollback();
+//     res.status(500).json({ error: error.message });
+//   }
+// };
+
+
+
 
 
 // Get all bookings of a user

@@ -4,19 +4,80 @@ const SubCategory = require('../models/Category/SubCategory');
 const User = require('../models/User');
 
 // 1. Show all services for a specific subcategory, including service image
+// exports.showServicesBySubCategory = async (req, res) => {
+//   try {
+//       const { subCategoryId } = req.params;
+//       const { page = 1, limit = 6, showAll } = req.query; // Extract query parameters
+
+//       // Default limit for showing services or the specified limit
+//       const itemsPerPage = showAll ? parseInt(limit) : 6;
+
+//       // Calculate offset for pagination
+//       const offset = (parseInt(page) - 1) * itemsPerPage;
+
+//       // Query services with pagination if showAll is true
+//       const options = {
+//           where: { subCategoryId },
+//           attributes: ['id', 'name', 'description', 'image'],
+//           limit: itemsPerPage,
+//           offset: showAll ? offset : 0,
+//       };
+
+//       const services = await Service.findAndCountAll(options);
+
+//       // Prepare pagination metadata
+//       const totalPages = showAll ? Math.ceil(services.count / itemsPerPage) : 1;
+
+//       res.status(200).json({
+//           services: services.rows,
+//           pagination: showAll ? {
+//               currentPage: parseInt(page),
+//               totalPages,
+//               totalItems: services.count
+//           } : null
+//       });
+//   } catch (error) {
+//       console.error(error);
+//       res.status(500).json({ error: 'Failed to fetch services for the subcategory' });
+//   }
+// };
+
 exports.showServicesBySubCategory = async (req, res) => {
-    try {
-      const { subCategoryId } = req.params;
-      const services = await Service.findAll({
-        where: { subCategoryId },
-        attributes: ['id', 'name', 'description', 'image'],
-        limit: 6 // Limit to 6 services
-      });
-      res.status(200).json(services);
-    } catch (error) {
-      res.status(500).json({ error: 'Failed to fetch services for the subcategory' });
+  try {
+    const { subCategoryId } = req.params;
+    const { showAll = 'false', page = 1, limit = 6 } = req.query; // Default limit for non-showAll mode
+
+    const queryOptions = {
+      where: { subCategoryId },
+      attributes: ['id', 'name', 'description', 'image'],
+    };
+
+    if (showAll === 'true') {
+      // Apply pagination for "See All" mode
+      const offset = (page - 1) * limit;
+      queryOptions.limit = parseInt(limit, 10);
+      queryOptions.offset = offset;
+    } else {
+      // Default limit for the initial view
+      queryOptions.limit = 6;
     }
-  };
+
+    const services = await Service.findAndCountAll(queryOptions);
+
+    res.status(200).json({
+      services: services.rows,
+      pagination: {
+        totalItems: services.count,
+        totalPages: Math.ceil(services.count / limit),
+        currentPage: parseInt(page, 10),
+      },
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Failed to fetch services for the subcategory' });
+  }
+};
+
   
 // 2. Add a service to user interests
 exports.addServiceToInterest = async (req, res) => {

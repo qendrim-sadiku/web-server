@@ -29,6 +29,7 @@ const storage = multer.diskStorage({
 
 const upload = multer({ storage: storage });
 
+
 // Get all users with their profile details
 exports.getAllUsers = async (req, res) => {
   try {
@@ -382,38 +383,7 @@ exports.updateUserInfo = async (req, res) => {
 
 
 
-exports.updateUserDetails = async (req, res) => {
-  const { userId, userDetails } = req.body;
 
-  try {
-    if (!userId) {
-      return res.status(400).send({ message: 'User ID is required' });
-    }
-
-    let user = await User.findByPk(userId);
-    if (!user) {
-      return res.status(404).send({ message: 'User not found' });
-    }
-
-    // Update the user details in both User and UserDetails models
-    await user.update({
-      name: userDetails.name,
-      surname: userDetails.surname,
-      username: userDetails.username
-    });
-
-    await UserDetails.upsert({
-      birthDate: userDetails.birthDate,
-      gender: userDetails.gender,
-      UserId: user.id
-    });
-
-    res.status(200).send({ message: 'User details updated successfully' });
-  } catch (error) {
-    console.error('Error updating user details:', error);
-    res.status(500).send({ message: 'Error updating user details', error: error.message || error });
-  }
-};
 
 // Update meeting points
 exports.updateMeetingPoints = async (req, res) => {
@@ -697,42 +667,71 @@ exports.getMeetingPoints = async (req, res) => {
 
 exports.getUserDetails = async (req, res) => {
   try {
-    // Fetch the user details along with associated user data
-    const userDetails = await UserDetails.findOne({
-      where: { UserId: req.params.userId },
-      attributes: ['birthDate', 'gender'],
-      include: [{
-        model: User,
-        attributes: ['name', 'surname', 'username']
-      }],
-      order: [['updatedAt', 'DESC']]
+    // Fetch the user details along with contact details
+    const user = await User.findByPk(req.params.userId, {
+      attributes: ['name', 'email', 'origin'], // Add 'email' if needed
+      include: [
+        {
+          model: UserContactDetails,
+          as: 'UserContactDetail', // Use the correct alias as defined in your model association
+          attributes: ['countryCode', 'phoneNumber']
+        }
+      ]
     });
 
-    // Fetch the user data separately if userDetails is not found
-    let user;
-    if (!userDetails) {
-      user = await User.findByPk(req.params.userId, {
-        attributes: ['name', 'surname', 'username']
-      });
-
-      if (!user) {
-        return res.status(404).send({ message: 'User not found' });
-      }
+    if (!user) {
+      return res.status(404).send({ message: 'User not found' });
     }
 
     // Prepare the response data
     const response = {
-      birthDate: userDetails ? userDetails.birthDate : null,
-      gender: userDetails ? userDetails.gender : null,
-      name: userDetails ? userDetails.User.name : user.name,
-      surname: userDetails ? userDetails.User.surname : user.surname,
-      username: userDetails ? userDetails.User.username : user.username
+      name: user.name,
+      email: user.email,
+      origin: user.origin,
+      countryCode: user.UserContactDetail?.countryCode || null,
+      phoneNumber: user.UserContactDetail?.phoneNumber || null
     };
 
     res.status(200).send(response);
   } catch (error) {
     console.error('Error fetching user details:', error);
     res.status(500).send({ message: 'Error fetching user details', error: error.message || error });
+  }
+};
+
+
+exports.updateUserDetails = async (req, res) => {
+  const { userId, name, email, origin, countryCode, phoneNumber } = req.body;
+
+  try {
+    if (!userId) {
+      return res.status(400).send({ message: 'User ID is required' });
+    }
+
+    // Find the user
+    const user = await User.findByPk(userId);
+    if (!user) {
+      return res.status(404).send({ message: 'User not found' });
+    }
+
+    // Update the user data in the User model
+    await user.update({
+      name,
+      email,
+      origin
+    });
+
+    // Update or insert the user contact details
+    await UserContactDetails.upsert({
+      countryCode,
+      phoneNumber,
+      UserId: userId // Explicitly set the UserId foreign key
+    });
+
+    res.status(200).send({ message: 'User details updated successfully' });
+  } catch (error) {
+    console.error('Error updating user details:', error);
+    res.status(500).send({ message: 'Error updating user details', error: error.message || error });
   }
 };
 

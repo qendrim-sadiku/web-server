@@ -42,7 +42,7 @@ app.use(
   session({
     secret: process.env.SESSION_SECRET || 'your-secret-key',
     resave: false,
-    saveUninitialized: false,
+    saveUninitialized: true,
     cookie: {
       secure: false, // Use true if HTTPS
       maxAge: 3600000, // 1 hour in milliseconds

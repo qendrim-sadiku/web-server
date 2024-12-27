@@ -24,6 +24,7 @@ const User = sequelize.define('User', {
       },
     },
   },
+  
   surname: {
     type: DataTypes.STRING,
     allowNull: true, // Allow null for optional fields
@@ -100,6 +101,15 @@ const User = sequelize.define('User', {
       },
     },
   },
+  origin: {
+    type: DataTypes.STRING,
+    allowNull: true, // Optional field
+    validate: {
+      notEmpty: {
+        msg: 'Origin must not be empty',
+      },
+    },
+  },
   passwordLastUpdatedAt: {
     type: DataTypes.DATE,
     allowNull: true, // Optional field, initially null
@@ -110,7 +120,22 @@ const User = sequelize.define('User', {
     type: DataTypes.STRING,
     allowNull: true, // Allow null for OAuth users
   },
-  
+  passkeyId: {
+    type: DataTypes.STRING, // Passkey unique identifier
+    allowNull: true,
+  },
+  passkeyPublicKey: {
+    type: DataTypes.TEXT, // Passkey public key
+    allowNull: true,
+  },
+  passkeyChallenge: {
+    type: DataTypes.TEXT,
+    allowNull: true,
+  },
+  passkeyChallengeExpires: {
+    type: DataTypes.DATE,
+    allowNull: true,
+  },
   provider: {
     type: DataTypes.STRING, // e.g., 'google', 'facebook'
     allowNull: true, // Optional field
