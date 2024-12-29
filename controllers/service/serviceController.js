@@ -413,12 +413,64 @@ exports.getTrainersForService = async (req, res) => {
   }
 };
 
+// exports.getAllServices = async (req, res) => {
+//   try {
+//     const {
+//       searchQuery = '', // Search query
+//       page = 1, // Current page (default to 1)
+//       limit = 10, // Limit per page (default to 10)
+//     } = req.query;
+
+//     // Ensure page and limit are integers
+//     const parsedPage = parseInt(page, 10);
+//     const parsedLimit = parseInt(limit, 10);
+
+//     // Calculate offset for pagination
+//     const offset = (parsedPage - 1) * parsedLimit;
+
+//     // Build the query object
+//     const serviceQuery = {};
+//     if (searchQuery) {
+//       serviceQuery[Op.or] = [
+//         { name: { [Op.like]: `%${searchQuery}%` } },
+//         { level: { [Op.like]: `%${searchQuery}%` } },
+//       ];
+//     }
+
+//     // Fetch services with total count
+//     const { count, rows } = await Service.findAndCountAll({
+//       where: serviceQuery, // Filters
+//       limit: parsedLimit, // Apply limit
+//       offset: offset, // Apply offset
+//     });
+
+//     // Calculate total pages
+//     const totalPages = Math.ceil(count / parsedLimit);
+
+//     // Return response
+//     res.status(200).json({
+//       totalItems: count,
+//       totalPages: totalPages,
+//       currentPage: parsedPage,
+//       data: rows, // Services for the current page
+//     });
+//   } catch (error) {
+//     console.error('Error fetching services:', error);
+//     res.status(500).json({ error: error.message });
+//   }
+// };
+
 exports.getAllServices = async (req, res) => {
   try {
     const {
       searchQuery = '', // Search query
       page = 1, // Current page (default to 1)
       limit = 10, // Limit per page (default to 10)
+      gender, // Gender filter
+      yearsOfExperience, // Experience range filter
+      type, // Service type filter
+      level, // Level filter
+      ageGroup, // Age group filter
     } = req.query;
 
     // Ensure page and limit are integers
@@ -428,20 +480,61 @@ exports.getAllServices = async (req, res) => {
     // Calculate offset for pagination
     const offset = (parsedPage - 1) * parsedLimit;
 
-    // Build the query object
+    // Build the service query object
     const serviceQuery = {};
+    if (type) {
+      serviceQuery.type = type; // Filter by service type
+    }
+    if (level) {
+      serviceQuery.level = level; // Filter by level
+    }
     if (searchQuery) {
       serviceQuery[Op.or] = [
-        { name: { [Op.like]: `%${searchQuery}%` } },
-        { level: { [Op.like]: `%${searchQuery}%` } },
+        { name: { [Op.like]: `%${searchQuery}%` } }, // Search by name
+        { description: { [Op.like]: `%${searchQuery}%` } }, // Search by description
       ];
     }
 
-    // Fetch services with total count
+    // Build the trainer query object
+    const trainerQuery = {};
+    if (gender) {
+      trainerQuery.gender = gender.trim(); // Filter by gender
+    }
+    if (yearsOfExperience) {
+      const experienceRange = yearsOfExperience.split('-');
+      const minExperience = parseInt(experienceRange[0], 10);
+      const maxExperience = parseInt(experienceRange[1], 10);
+      trainerQuery.yearsOfExperience = {
+        [Op.between]: [minExperience, maxExperience], // Filter by years of experience range
+      };
+    }
+    if (ageGroup) {
+      trainerQuery.ageGroup = ageGroup; // Apply age group filter
+    }
+
+    // Fetch services with filters, pagination, and trainer inclusion
     const { count, rows } = await Service.findAndCountAll({
-      where: serviceQuery, // Filters
+      where: serviceQuery, // Apply service filters
+      attributes: [
+        'id',
+        'name',
+        'description',
+        'image',
+        'duration',
+        'hourlyRate',
+        'level',
+        'type',
+      ],
+      include: [
+        {
+          model: Trainer,
+          where: Object.keys(trainerQuery).length > 0 ? trainerQuery : undefined,
+          attributes: ['id', 'name', 'gender', 'yearsOfExperience', 'ageGroup'],
+        },
+      ],
       limit: parsedLimit, // Apply limit
       offset: offset, // Apply offset
+      distinct: true, // Ensure accurate unique count
     });
 
     // Calculate total pages
@@ -452,13 +545,30 @@ exports.getAllServices = async (req, res) => {
       totalItems: count,
       totalPages: totalPages,
       currentPage: parsedPage,
-      data: rows, // Services for the current page
+      data: rows.map((service) => ({
+        id: service.id,
+        name: service.name,
+        description: service.description,
+        image: service.image,
+        duration: service.duration,
+        hourlyRate: service.hourlyRate,
+        level: service.level,
+        type: service.type,
+        trainers: service.Trainers.map((trainer) => ({
+          id: trainer.id,
+          name: trainer.name,
+          gender: trainer.gender,
+          yearsOfExperience: trainer.yearsOfExperience,
+          ageGroup: trainer.ageGroup,
+        })),
+      })),
     });
   } catch (error) {
-    console.error('Error fetching services:', error);
+    console.error('Error fetching services:', error.message);
     res.status(500).json({ error: error.message });
   }
 };
+
 
 
 
