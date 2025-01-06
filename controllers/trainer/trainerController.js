@@ -408,6 +408,8 @@ exports.getTrainerAvailability = async (req, res) => {
 
 
 exports.getMultipleTrainersAvailability = async (req, res) => {
+
+  
   const { trainerIds, date } = req.body;
 
   if (!date) {
