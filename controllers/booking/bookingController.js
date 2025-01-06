@@ -607,6 +607,182 @@ exports.createBooking = async (req, res) => {
 // };
 
 
+// Get user bookings with pagination
+exports.getUserBookingsWithPagination = async (req, res) => {
+  try {
+    // Update past bookings before fetching
+    await updatePastBookingsStatus();
+
+    const { userId } = req.params;
+    const { page = 1, limit = 10 } = req.query; // Default pagination values
+
+    // Calculate offset for pagination
+    const offset = (page - 1) * limit;
+
+    // Fetch bookings with pagination
+    const { count, rows: bookings } = await Booking.findAndCountAll({
+      where: { userId },
+      limit: parseInt(limit),
+      offset: parseInt(offset),
+      include: [
+        { model: Participant },
+        {
+          model: BookingDate,
+          attributes: ['date', 'startTime', 'endTime', 'createdAt'],
+        },
+        {
+          model: Service,
+          attributes: ['id', 'name', 'description', 'image', 'duration', 'hourlyRate', 'level'],
+          include: [
+            {
+              model: ServiceDetails,
+              attributes: ['fullDescription', 'highlights', 'whatsIncluded', 'whatsNotIncluded', 'recommendations', 'coachInfo'],
+            },
+            {
+              model: Trainer,
+            },
+            {
+              model: SubCategory,
+              attributes: ['id', 'name'],
+              include: [
+                {
+                  model: Category,
+                  attributes: ['id', 'name'],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+
+    // Process bookings to include only the latest createdAt dates
+    const filteredBookings = bookings.map(booking => {
+      const latestCreatedAt = booking.BookingDates.reduce((latest, date) => {
+        return new Date(date.createdAt) > new Date(latest.createdAt) ? date : latest;
+      }, booking.BookingDates[0]).createdAt;
+
+      const validDates = booking.BookingDates.filter(date => date.createdAt === latestCreatedAt);
+
+      return {
+        ...booking.toJSON(),
+        BookingDates: validDates,
+      };
+    });
+
+    // Return paginated response
+    res.status(200).json({
+      totalItems: count,
+      totalPages: Math.ceil(count / limit),
+      currentPage: parseInt(page),
+      bookings: filteredBookings,
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+
+exports.getPaginatedFilteredBookingsOfUser = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const {
+      categoryOrSubcategory,
+      startDate,
+      endDate,
+      status,
+      page = 1,
+      limit = 10,
+    } = req.query;
+
+    const offset = (page - 1) * limit;
+    const whereClause = { userId };
+
+    // Apply status filter
+    if (status) {
+      whereClause.status = status;
+    }
+
+    // Sequelize-specific filtering for nested models
+    const includeFilters = [];
+
+    // Add filter for category or subcategory
+    if (categoryOrSubcategory) {
+      includeFilters.push({
+        model: Service,
+        as: 'Service', // Ensure alias matches your model association
+        required: true,
+        include: [
+          {
+            model: SubCategory,
+            as: 'SubCategory', // Ensure alias matches your model association
+            required: true,
+            where: { name: categoryOrSubcategory },
+            attributes: ['id', 'name'],
+          },
+        ],
+      });
+    } else {
+      includeFilters.push({
+        model: Service,
+        as: 'Service', // Ensure alias matches your model association
+        required: true,
+        include: [
+          {
+            model: SubCategory,
+            as: 'SubCategory',
+            attributes: ['id', 'name'],
+          },
+        ],
+      });
+    }
+
+    // Add date filter
+    if (startDate && endDate) {
+      includeFilters.push({
+        model: BookingDate,
+        as: 'BookingDates', // Ensure alias matches your model association
+        required: true,
+        where: {
+          date: {
+            [Op.between]: [startDate, endDate],
+          },
+        },
+        attributes: ['date', 'startTime', 'endTime', 'createdAt'],
+      });
+    } else {
+      includeFilters.push({
+        model: BookingDate,
+        as: 'BookingDates',
+        required: true,
+        attributes: ['date', 'startTime', 'endTime', 'createdAt'],
+      });
+    }
+
+    // Fetch paginated and filtered bookings
+    const { count, rows: bookings } = await Booking.findAndCountAll({
+      where: whereClause,
+      limit: parseInt(limit, 10),
+      offset,
+      distinct: true,
+      include: [
+        { model: Participant, as: 'Participants' },
+        ...includeFilters,
+      ],
+    });
+
+    // Return paginated response
+    res.status(200).json({
+      bookings,
+      totalBookings: count,
+      totalPages: Math.ceil(count / limit),
+      currentPage: parseInt(page),
+    });
+  } catch (error) {
+    console.error('Error in pagination:', error.message);
+    res.status(500).json({ error: 'Failed to fetch bookings with pagination.' });
+  }
+};
 
 
 

@@ -1,31 +1,34 @@
-
 const { DataTypes } = require('sequelize');
 const sequelize = require('../config/sequelize');
 const User = require('./User');
-const {Service} = require('./Services/Service'); // Assuming you already have a Service model
+const { Service } = require('./Services/Service'); // Assuming you already have a Service model
 
 const UserInterest = sequelize.define('UserInterest', {
   id: {
     type: DataTypes.INTEGER,
     autoIncrement: true,
-    primaryKey: true
+    primaryKey: true,
   },
   userId: {
     type: DataTypes.INTEGER,
     references: {
       model: User,
-      key: 'id'
-    }
+      key: 'id',
+    },
   },
   serviceId: {
     type: DataTypes.INTEGER,
     references: {
       model: Service,
-      key: 'id'
-    }
-  }
+      key: 'id',
+    },
+  },
+  address: {
+    type: DataTypes.STRING,
+    allowNull: true, // Optional field
+  },
 }, {
-  timestamps: false
+  timestamps: false,
 });
 
 User.belongsToMany(Service, { through: UserInterest, as: 'interests', foreignKey: 'userId' });

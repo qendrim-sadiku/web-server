@@ -4,6 +4,10 @@ const router = express.Router();
 
 router.post('/bookings', bookingController.createBooking);
 router.get('/bookings/user/:userId', bookingController.getAllBookingsOfUser);
+
+router.get('/bookings/user/:userId/paginated', bookingController.getUserBookingsWithPagination);
+
+
 router.get('/bookings/:id', bookingController.getBookingById);
 // Route to get bookings by multiple IDs
 // Route to fetch bookings by multiple IDs
@@ -15,6 +19,9 @@ router.post('/bookings/:bookingId/rebook', bookingController.rebookService);
 router.put('/bookings/extend-session/:id', bookingController.extendSession);
 
 router.get('/bookings/user/:userId/filter', bookingController.getFilteredBookingsOfUser);
+
+router.get('/bookings/user/:userId/paginated-filter', bookingController.getPaginatedFilteredBookingsOfUser);
+
 router.post('/bookings/user/:userId/dates', bookingController.getUserBookingsByDates);
 // Route to get booking counts for multiple services
 router.post('/bookings/counts', bookingController.getBookingCountsForServices);

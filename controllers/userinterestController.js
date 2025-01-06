@@ -79,22 +79,23 @@ exports.showServicesBySubCategory = async (req, res) => {
 };
 
   
-// 2. Add a service to user interests
 exports.addServiceToInterest = async (req, res) => {
   try {
-    const { userId, serviceId } = req.body;
+    const { userId, serviceId, address } = req.body;
     const existingInterest = await UserInterest.findOne({ where: { userId, serviceId } });
 
     if (existingInterest) {
       return res.status(400).json({ message: 'Service already added to interests' });
     }
 
-    await UserInterest.create({ userId, serviceId });
+    await UserInterest.create({ userId, serviceId, address });
     res.status(201).json({ message: 'Service added to interests' });
   } catch (error) {
+    console.error(error);
     res.status(500).json({ error: 'Failed to add service to interests' });
   }
 };
+
 
 // 3. Remove a service from user interests
 exports.removeServiceFromInterest = async (req, res) => {
@@ -107,32 +108,56 @@ exports.removeServiceFromInterest = async (req, res) => {
   }
 };
 
-// 4. Show all interests for a user
-// 4. Show all interests for a user, including service image
-exports.showUserInterests = async (req, res) => {
-    try {
-      const { userId } = req.params;
-      const user = await User.findByPk(userId, {
-        include: [
-          {
-            model: Service,
-            as: 'interests',
-            attributes: ['id', 'name', 'description', 'image'], // Include image attribute
-            include: {
-              model: SubCategory,
-              attributes: ['name'] // Include subcategory details
-            }
-          }
-        ]
-      });
-  
-      if (!user) {
-        return res.status(404).json({ error: 'User not found' });
-      }
-  
-      res.status(200).json(user.interests);
-    } catch (error) {
-      res.status(500).json({ error: 'Failed to fetch user interests' });
+exports.updateUserInterestAddress = async (req, res) => {
+  try {
+    const { userId, serviceId, address } = req.body;
+
+    // Find the UserInterest record
+    const userInterest = await UserInterest.findOne({
+      where: { userId, serviceId },
+    });
+
+    if (!userInterest) {
+      return res.status(404).json({ message: 'User interest not found' });
     }
-  };
-  
+
+    // Update the address field
+    userInterest.address = address;
+    await userInterest.save();
+
+    res.status(200).json({ message: 'Address updated successfully', userInterest });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Failed to update address for user interest' });
+  }
+};
+
+
+exports.showUserInterests = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const user = await User.findByPk(userId, {
+      include: [
+        {
+          model: Service,
+          as: 'interests',
+          attributes: ['id', 'name', 'description', 'image'], // Include image attribute
+          through: { attributes: ['address'] }, // Include address field from UserInterest
+          include: {
+            model: SubCategory,
+            attributes: ['name'], // Include subcategory details
+          },
+        },
+      ],
+    });
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    res.status(200).json(user.interests);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Failed to fetch user interests' });
+  }
+};

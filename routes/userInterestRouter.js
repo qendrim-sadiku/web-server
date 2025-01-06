@@ -8,6 +8,9 @@ router.get('/subcategory/:subCategoryId/services', userInterestController.showSe
 // Route to add a service to user interests
 router.post('/add-interest', userInterestController.addServiceToInterest);
 
+router.put('/update-interest-address', userInterestController.updateUserInterestAddress);
+
+
 // Route to remove a service from user interests
 router.delete('/remove-interest', userInterestController.removeServiceFromInterest);
 
