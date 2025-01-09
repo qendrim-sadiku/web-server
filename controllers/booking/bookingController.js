@@ -10,34 +10,56 @@ const sequelize = require('../../config/sequelize');
 const moment = require('moment'); // Make sure you have moment.js installed
 const { Op } = require('sequelize'); // Import Op from Sequelize
 
-// Helper function to update past bookings as completed
 const updatePastBookingsStatus = async () => {
-  const currentDate = new Date();
+  try {
+    const currentDate = new Date();
 
-  // Find all bookings that are still active and have past booking dates
-  const activeBookings = await Booking.findAll({
-    where: { status: 'active' }, // Only check active bookings
-    include: [
-      {
-        model: BookingDate,
-        attributes: ['date', 'endTime'],
-      },
-    ],
-  });
-
-  for (let booking of activeBookings) {
-    const hasPastDate = booking.BookingDates.some(bookingDate => {
-      const bookingDateTime = new Date(`${bookingDate.date}T${bookingDate.endTime}`);
-      return bookingDateTime < currentDate;
+    // Find all bookings that are not already marked as "completed"
+    const bookings = await Booking.findAll({
+      where: { status: { [Op.ne]: 'completed' } }, // Exclude already completed bookings
+      include: [
+        {
+          model: BookingDate,
+          attributes: ['date', 'endTime', 'createdAt'],
+        },
+      ],
     });
 
-    if (hasPastDate) {
-      // Update the status to 'completed'
-      booking.status = 'completed';
-      await booking.save();
+    for (let booking of bookings) {
+      let hasFutureDate = false;
+      let hasPastDate = false;
+
+      // Check all associated BookingDates
+      booking.BookingDates.forEach((bookingDate) => {
+        const bookingDateTime = new Date(`${bookingDate.date}T${bookingDate.endTime}`);
+
+        if (bookingDateTime > currentDate) {
+          hasFutureDate = true;
+        } else if (bookingDateTime < currentDate) {
+          hasPastDate = true;
+        }
+      });
+
+      // Update booking status based on date checks
+      if (hasFutureDate) {
+        if (booking.status !== 'active') {
+          console.log(`Updating booking ID ${booking.id} status to 'active' due to future dates.`);
+          booking.status = 'active';
+          await booking.save();
+        }
+      } else if (hasPastDate) {
+        if (booking.status !== 'completed') {
+          console.log(`Marking booking ID ${booking.id} as 'completed' due to only past dates.`);
+          booking.status = 'completed';
+          await booking.save();
+        }
+      }
     }
+  } catch (error) {
+    console.error('Error updating bookings status:', error.message);
   }
 };
+
 
 
 // Helper function to convert 12-hour time format to 24-hour format
@@ -124,6 +146,9 @@ exports.createBooking = async (req, res) => {
         { transaction }
       );
 
+      // Clear any existing participants for this booking
+      await Participant.destroy({ where: { bookingId: booking.id }, transaction });
+
       // Associate participants with the current booking
       if (participants.length > 0) {
         const participantData = participants.map((participant) => ({
@@ -170,6 +195,7 @@ exports.createBooking = async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 };
+
 
 // exports.createBooking = async (req, res) => {
 //   const transaction = await sequelize.transaction();
@@ -725,7 +751,7 @@ exports.getPaginatedFilteredBookingsOfUser = async (req, res) => {
     } else {
       includeFilters.push({
         model: Service,
-        as: 'Service', // Ensure alias matches your model association
+        as: 'Service',
         required: true,
         include: [
           {
@@ -771,9 +797,23 @@ exports.getPaginatedFilteredBookingsOfUser = async (req, res) => {
       ],
     });
 
+    // Process bookings to include only the latest BookingDate
+    const filteredBookings = bookings.map(booking => {
+      // Find the latest BookingDate based on createdAt
+      const latestBookingDate = booking.BookingDates.reduce((latest, current) => {
+        return new Date(current.createdAt) > new Date(latest.createdAt) ? current : latest;
+      }, booking.BookingDates[0]);
+
+      // Keep only the latest BookingDate
+      return {
+        ...booking.toJSON(),
+        BookingDates: [latestBookingDate],
+      };
+    });
+
     // Return paginated response
     res.status(200).json({
-      bookings,
+      bookings: filteredBookings,
       totalBookings: count,
       totalPages: Math.ceil(count / limit),
       currentPage: parseInt(page),
@@ -786,6 +826,7 @@ exports.getPaginatedFilteredBookingsOfUser = async (req, res) => {
 
 
 
+
 // Get all bookings of a user
 exports.getAllBookingsOfUser = async (req, res) => {
   try {
@@ -793,6 +834,8 @@ exports.getAllBookingsOfUser = async (req, res) => {
     await updatePastBookingsStatus();
 
     const { userId } = req.params;
+
+    // Fetch bookings for the user
     const bookings = await Booking.findAll({
       where: { userId },
       include: [
@@ -807,7 +850,14 @@ exports.getAllBookingsOfUser = async (req, res) => {
           include: [
             {
               model: ServiceDetails,
-              attributes: ['fullDescription', 'highlights', 'whatsIncluded', 'whatsNotIncluded', 'recommendations', 'coachInfo'],
+              attributes: [
+                'fullDescription',
+                'highlights',
+                'whatsIncluded',
+                'whatsNotIncluded',
+                'recommendations',
+                'coachInfo',
+              ],
             },
             {
               model: Trainer,
@@ -827,24 +877,29 @@ exports.getAllBookingsOfUser = async (req, res) => {
       ],
     });
 
-    const filteredBookings = bookings.map(booking => {
-      const latestCreatedAt = booking.BookingDates.reduce((latest, date) => {
-        return new Date(date.createdAt) > new Date(latest.createdAt) ? date : latest;
-      }, booking.BookingDates[0]).createdAt;
+    const filteredBookings = bookings.map((booking) => {
+      // Sort BookingDates by date and time to find the most recent one
+      const validDates = booking.BookingDates.sort((a, b) => {
+        const dateA = new Date(`${a.date}T${a.endTime}`);
+        const dateB = new Date(`${b.date}T${b.endTime}`);
+        return dateB - dateA; // Sort descending (latest first)
+      });
 
-      const validDates = booking.BookingDates.filter(date => date.createdAt === latestCreatedAt);
-
+      // If you want all dates sorted, simply return the sorted array
+      // Otherwise, if you want only the latest date, return the first element
       return {
         ...booking.toJSON(),
-        BookingDates: validDates,
+        BookingDates: validDates, // Return sorted or latest BookingDates
       };
     });
 
     res.status(200).json(filteredBookings);
   } catch (error) {
+    console.error('Error fetching bookings:', error.message);
     res.status(500).json({ error: error.message });
   }
 };
+
 
 
 exports.getBookingById = async (req, res) => {
@@ -864,9 +919,13 @@ exports.getBookingById = async (req, res) => {
           where: { bookingId: id },
           required: false, // Allow bookings without participants
         },
-        { 
+        {
           model: BookingDate,
+          where: {
+            bookingId: id, // Filter BookingDate by booking ID
+          },
           attributes: ['date', 'startTime', 'endTime'], // Include date, startTime, endTime
+          required: true, // Ensure at least one BookingDate is required
         },
         {
           model: Service,
@@ -875,12 +934,12 @@ exports.getBookingById = async (req, res) => {
             {
               model: ServiceDetails,
               attributes: [
-                'fullDescription', 
-                'highlights', 
-                'whatsIncluded', 
-                'whatsNotIncluded', 
-                'recommendations', 
-                'whatsToBring', 
+                'fullDescription',
+                'highlights',
+                'whatsIncluded',
+                'whatsNotIncluded',
+                'recommendations',
+                'whatsToBring',
                 'coachInfo',
               ],
             },
@@ -898,13 +957,8 @@ exports.getBookingById = async (req, res) => {
       return res.status(404).json({ message: 'Booking not found' });
     }
 
-    // Filter participants to only show them if they exist for the booking
-    const validParticipants = booking.Participants && booking.Participants.length > 0
-      ? booking.Participants
-      : null;
-
-    // Sort and keep the most recent date
-    const validDates = booking.BookingDates.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, 1);
+    // Sort and keep the most recent date based on the `date` field
+    const validDates = booking.BookingDates.sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 1);
 
     // Extract the associated trainer for this booking through the service
     const selectedTrainer = booking.Service?.Trainers?.[0] || null; // Select the first trainer
@@ -913,10 +967,10 @@ exports.getBookingById = async (req, res) => {
     res.status(200).json({
       ...booking.toJSON(),
       BookingDates: validDates, // Return the most recent valid date
-      Participants: validParticipants, // Return participants only if they exist
       Trainer: selectedTrainer, // Return the trainer associated with the service
     });
   } catch (error) {
+    console.error('Error in getBookingById:', error);
     res.status(500).json({ error: error.message });
   }
 };
@@ -987,7 +1041,12 @@ exports.getBookingsByIds = async (req, res) => {
         ? booking.Participants
         : null;
 
-      const validDates = booking.BookingDates.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, 1);
+      // Sort BookingDates by `date` and `endTime` to get the latest booking
+      const validDates = booking.BookingDates.sort((a, b) => {
+        const dateA = new Date(`${a.date}T${a.endTime}`);
+        const dateB = new Date(`${b.date}T${b.endTime}`);
+        return dateB - dateA; // Sort descending (latest first)
+      }).slice(0, 1); // Take the most recent date
 
       const selectedTrainer = booking.Service?.Trainers?.[0] || null;
 
@@ -1002,6 +1061,7 @@ exports.getBookingsByIds = async (req, res) => {
     // Send the response
     res.status(200).json(response);
   } catch (error) {
+    console.error('Error fetching bookings by IDs:', error.message);
     res.status(500).json({ error: error.message });
   }
 };

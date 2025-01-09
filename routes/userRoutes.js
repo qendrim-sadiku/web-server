@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { authenticateJWT, verifyAdmin } = require('../middleware/authMiddleware');
+const {  verifyAdmin } = require('../middleware/authMiddleware');
 const userController = require('../controllers/userController');
 
 // Example route to create a user with role restriction (admin only)
@@ -10,62 +10,62 @@ router.post('/create', verifyAdmin, userController.createUser);
 router.get('/all', userController.getAllUsers);
 
 // Route for creating or updating user profile (authenticated users only)
-router.post('/profile', authenticateJWT, userController.updateProfile);
+router.post('/profile',  userController.updateProfile);
 
 // Route for fetching user profile by userId (authenticated users only)
 router.get('/profile/:userId', userController.getProfile);
 
 // Route for updating user profile by userId (authenticated users only)
-router.put('/profile/:userId', authenticateJWT, userController.updateProfile);
+router.put('/profile/:userId',  userController.updateProfile);
 
 // Route to verify current password (authenticated users only)
-router.post('/verify', authenticateJWT, userController.verifyCurrentPassword);
+router.post('/verify',  userController.verifyCurrentPassword);
 
 // Route for updating password (authenticated users only)
-router.put('/change-password', authenticateJWT, userController.updatePassword);
+router.put('/change-password',  userController.updatePassword);
 
 // Route to get the last password update timestamp
 router.get('/:userId/password-last-updated', userController.getPasswordLastUpdated);
 
 // Update contact details (authenticated users only)
-router.put('/update-contact-details', authenticateJWT, userController.updateContactDetails);
+router.put('/update-contact-details',  userController.updateContactDetails);
 
 // Update address (authenticated users only)
 router.put('/update-addresses', userController.updateAddresses);
 
 // Set default address (authenticated users only)
-router.put('/set-default-address', authenticateJWT, userController.setDefaultAddress);
+router.put('/set-default-address',  userController.setDefaultAddress);
 
 
 // Update meeting points (authenticated users only)
-router.put('/update-meeting-points', authenticateJWT, userController.updateMeetingPoints);
+router.put('/update-meeting-points',  userController.updateMeetingPoints);
 
 // Update user details (authenticated users only)
-router.put('/update-user-details', authenticateJWT, userController.updateUserDetails);
+router.put('/update-user-details',  userController.updateUserDetails);
 
 // Update payment info (authenticated users only)
-router.put('/update-payment-info', authenticateJWT, userController.updatePaymentInfo);
-router.put('/user/:userId/default-address', authenticateJWT, userController.setDefaultAddress);
+router.put('/update-payment-info',  userController.updatePaymentInfo);
+router.put('/user/:userId/default-address',  userController.setDefaultAddress);
 router.delete('/payment-info/:paymentId', userController.deletePaymentInfo);
 
 // Update user info (authenticated users only)
-router.put('/user-info', authenticateJWT, userController.updateUserInfo);
+router.put('/user-info',  userController.updateUserInfo);
 
 // Get user details by userId (authenticated users only)
-router.get('/user/:userId', authenticateJWT, userController.getUser);
+router.get('/user/:userId',  userController.getUser);
 router.put('/user/:userId/complete-profile', userController.completeUserProfile);
 
-router.get('/user/:userId/addresses', authenticateJWT, userController.getUserAddresses);
-router.get('/user/:userId/contact-details', authenticateJWT, userController.getUserContactDetails);
-router.get('/user/:userId/meeting-point', authenticateJWT, userController.getMeetingPoints);
-router.get('/user/:userId/details', authenticateJWT, userController.getUserDetails);
-router.get('/user/:userId/payment-info', authenticateJWT, userController.getUserPaymentInfo);
+router.get('/user/:userId/addresses',  userController.getUserAddresses);
+router.get('/user/:userId/contact-details',  userController.getUserContactDetails);
+router.get('/user/:userId/meeting-point',  userController.getMeetingPoints);
+router.get('/user/:userId/details',  userController.getUserDetails);
+router.get('/user/:userId/payment-info',  userController.getUserPaymentInfo);
 router.put('/user/set-default-payment', userController.setDefaultPaymentMethod);
 
 // Handle user avatar (authenticated users only)
-router.get('/user/:userId/avatar', authenticateJWT, userController.getUserAvatar);
-router.put('/user/:userId/avatar', authenticateJWT, userController.updateUserAvatar);
-router.delete('/user/:userId/avatar', authenticateJWT, userController.removeUserAvatar);
+router.get('/user/:userId/avatar',  userController.getUserAvatar);
+router.put('/user/:userId/avatar',  userController.updateUserAvatar);
+router.delete('/user/:userId/avatar',  userController.removeUserAvatar);
 
 // Route to update user preferences (authenticated users only)
 router.put('/user/:userId/preferences', userController.updateUserPreferences);
@@ -74,7 +74,7 @@ router.put('/user/:userId/preferences', userController.updateUserPreferences);
 // router.get('/user/:userId/preferences', userController.getUserPreferences);
 
 // Add the separate routes for updating individual preferences
-router.get('/user/:userId/preferences', authenticateJWT, userController.getUserPreferences);
+router.get('/user/:userId/preferences',  userController.getUserPreferences);
 
 // Route to update two-factor authentication (authenticated users only)
 // router.put('/user/:userId/preferences/two-factor-authentication', userController.updateTwoFactorAuthentication);
@@ -91,7 +91,7 @@ router.post('/twoFactor/resendVerificationCode', userController.resendVerificati
 router.post('/twoFactor/verifyCode', userController.verifyTwoFactorCodeAndUpdate);
 
 // Route to update email notifications (authenticated users only)
-router.put('/user/:userId/preferences/email-notifications', authenticateJWT, userController.updateEmailNotifications);
+router.put('/user/:userId/preferences/email-notifications',  userController.updateEmailNotifications);
 
 // Route to update dive location preference (authenticated users only)
 router.put('/user/:userId/preferences/device-location', userController.updateDeviceLocation);
@@ -125,29 +125,29 @@ router.put('/user/:userId/preferences/appearance', userController.setAppearance)
 
 router.get(
     '/user/:userId/preferences/communication-method',
-    authenticateJWT,
+    
     userController.getCommunicationMethod
 );
 
 router.put(
     '/user/:userId/preferences/communication-method',
-    authenticateJWT,
+    
     userController.updateCommunicationMethod
 );
 
 router.get(
     '/user/:userId/preferences/notifications',
-    authenticateJWT,
+    
     userController.getNotifications
 );
 
 router.put(
     '/user/:userId/preferences/notifications',
-    authenticateJWT,
+    
     userController.updateNotifications
 );
 
-router.get('/user/:userId/preferences/email-notifications', authenticateJWT, userController.getEmailNotifications);
+router.get('/user/:userId/preferences/email-notifications',  userController.getEmailNotifications);
 
 
 router.get('/user/fcm-token/:userId', userController.getFcmToken);

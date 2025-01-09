@@ -1,21 +1,42 @@
 // controllers/locationController.js
 const axios = require('axios');
-
+const path = require('path');
+const fs = require('fs');
 const COUNTRIES_API_URL = 'https://restcountries.com/v3.1/all'; // REST Countries API URL
 const GEO_NAMES_USERNAME = 'qsdadiku'; // Replace with your GeoNames username
 
 // Fetch all countries
+// exports.getCountries = async (req, res) => {
+//   try {
+//     const response = await axios.get(COUNTRIES_API_URL);
+//     const countries = response.data.map(country => ({
+//       name: country.name.common,
+//       flagUrl:country.flags.png,
+//       code: country.cca2 // or any other property you prefer
+//     }));
+//     res.json(countries);
+//   } catch (error) {
+//     res.status(500).send('Error fetching countries');
+//   }
+// };
+
+// Fetch all countries from the static file
 exports.getCountries = async (req, res) => {
   try {
-    const response = await axios.get(COUNTRIES_API_URL);
-    const countries = response.data.map(country => ({
-      name: country.name.common,
-      flagUrl:country.flags.png,
-      code: country.cca2 // or any other property you prefer
-    }));
-    res.json(countries);
+    // Path to the countries.json file
+    const filePath = path.join(__dirname, '../core/countries.json');
+
+    // Read the countries.json file
+    const countriesData = fs.readFileSync(filePath, 'utf-8');
+
+    // Parse the data into JSON
+    const countries = JSON.parse(countriesData);
+
+    // Return the countries data as a JSON response
+    res.status(200).json(countries);
   } catch (error) {
-    res.status(500).send('Error fetching countries');
+    console.error('Error reading countries.json:', error.message);
+    res.status(500).json({ message: 'Error fetching countries', error: error.message });
   }
 };
 
@@ -48,29 +69,33 @@ exports.getCities = async (req, res) => {
 };
 
 
+
 exports.getEntries = async (req, res) => {
   try {
-    // Fetch country data from the RestCountries API
-    const response = await axios.get('https://restcountries.com/v3.1/all');
-    const countries = response.data;
+    // Read the local countries.json file
+    const filePath = path.join(__dirname, '../core/entries.json'); // Adjust the path as needed
+    const countries = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
 
-    // Process the data to extract country names and phone codes
-    const countriesWithPhoneCodes = countries.map(country => {
-      // Check if the country has an 'idd' object and suffixes
-      const phoneCode = country.idd && country.idd.suffixes && country.idd.suffixes.length > 0
-        ? `${country.idd.root}${country.idd.suffixes[0]}`
-        : 'N/A'; // Default to 'N/A' if phone code information is missing
+    // Log the first country for debugging
+    console.log('First country data:', countries[0]);
 
+    // Process the data to extract country names, phone codes, and flag URLs
+    const countriesWithPhoneCodes = countries.map((country) => {
       return {
-        name: country.name.common,
-        phoneCode: phoneCode,
-        flagUrl: country.flags.png // or country.flags.svg
+        name: country.name || 'Unknown',
+        phoneCode: country.phoneCode || 'N/A',
+        flagUrl: country.flagUrl || '',
       };
     });
 
-    res.json(countriesWithPhoneCodes);
+  
+
+    // Send the response and log it
+    res.status(200).json(countriesWithPhoneCodes);
+    console.log('Response data:', countriesWithPhoneCodes);
   } catch (error) {
-    res.status(500).json({ message: 'Error fetching country data' });
+    console.error('Error reading countries.json:', error.message);
+    res.status(500).json({ message: 'Error reading countries.json', error: error.message });
   }
 };
 
