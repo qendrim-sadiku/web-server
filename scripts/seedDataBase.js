@@ -17,6 +17,10 @@ const Booking = require('../models/Bookings/Booking');
 const Review = require('../models/Trainer/Review');
 const User = require('../models/User');
 const ServiceType = require('../models/Services/ServiceType');
+// ...
+const GroupSession = require('../models/GroupSessions/GroupSession');
+// ...
+
 
 /*****************************************************
  * ARRAYS OF IMAGE URLs
@@ -413,6 +417,92 @@ const createServiceTypes = async (getServiceTypeImage) => {
   }
 };
 
+
+/**
+ * createSampleGroupSessions - Creates random group sessions for some Services.
+ *
+ * @param {number} numberOfSessions - how many sessions to create per service
+ */
+/**
+ * createSampleGroupSessions - Creates random group sessions for some Services.
+ *
+ * @param {number} numberOfSessions - how many sessions to create per service
+ */
+const createSampleGroupSessions = async (numberOfSessions = 10) => {
+  try {
+    console.log(`Creating up to ${numberOfSessions} group sessions per service...`);
+
+    // Fetch all services
+    const services = await Service.findAll();
+
+    if (!services.length) {
+      console.log('No services available to create group sessions.');
+      return;
+    }
+
+    // Iterate over services to fetch their associated trainers manually
+    for (const service of services) {
+      // Fetch trainers linked to this service using ServiceTrainer
+      const serviceTrainers = await ServiceTrainer.findAll({
+        where: { serviceId: service.id }
+      });
+
+      // Map to extract trainer IDs
+      const trainerIds = serviceTrainers.map(st => st.trainerId);
+
+      // Fetch trainers based on IDs
+      const trainersForService = await Trainer.findAll({
+        where: { id: trainerIds }
+      });
+
+      if (!trainersForService.length) {
+        console.log(`No trainers found for service ID ${service.id}. Skipping...`);
+        continue;
+      }
+
+      // Create group sessions for trainers linked to the service
+      for (let i = 0; i < numberOfSessions; i++) {
+        const randomTrainer = faker.helpers.arrayElement(trainersForService);
+
+        const daysInFuture = faker.number.int({ min: 1, max: 60 });
+        const sessionDate = faker.date.soon(daysInFuture);
+
+        const startHour = faker.number.int({ min: 8, max: 16 });
+        const endHour = startHour + faker.number.int({ min: 1, max: 3 });
+        const startTime = `${String(startHour).padStart(2, '0')}:00:00`;
+        const endTime = `${String(endHour).padStart(2, '0')}:00:00`;
+        const duration = endHour - startHour;
+
+        await GroupSession.create({
+          trainerId: randomTrainer.id,
+          serviceId: service.id,
+          date: sessionDate.toISOString().split('T')[0],
+          startTime,
+          endTime,
+          duration,
+          maxGroupSize: faker.number.int({ min: 5, max: 20 }),
+          currentEnrollment: 0,
+          pricePerPerson: faker.number.int({ min: 10, max: 50 }),
+          status: 'scheduled',
+          address: faker.address.streetAddress(),
+        });
+      }
+    }
+
+    console.log('Group sessions created successfully with correct trainer associations!');
+  } catch (error) {
+    console.error('Error creating group sessions:', error);
+    throw error;
+  }
+};
+
+
+
+
+
+
+
+
 /*****************************************************
  * CREATE SAMPLE SERVICES
  *****************************************************/
@@ -589,6 +679,10 @@ async function seedDatabase() {
 
     console.log('Creating services and service details...');
     await createSampleServices(getTrainerImage, getServiceImage);
+
+      // NEW STEP: Create group sessions
+      console.log('Creating group sessions...');
+      await createSampleGroupSessions(10); // e.g., 3 group sessions per service
 
     console.log('Creating reviews...');
     await createSampleReviews();

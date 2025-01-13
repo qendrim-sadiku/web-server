@@ -23,4 +23,6 @@ const ServiceTrainer = sequelize.define('ServiceTrainer', {
   }
 });
 
+
+
 module.exports = ServiceTrainer;

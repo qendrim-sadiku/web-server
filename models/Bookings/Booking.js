@@ -2,6 +2,7 @@ const { DataTypes } = require('sequelize');
 const sequelize = require('../../config/sequelize');
 const { Service } = require('../Services/Service'); // Correct reference to Service model
 const Trainer = require('../Trainer/Trainer');
+const GroupSession = require('../GroupSessions/GroupSession'); 
 
 const Booking = sequelize.define('Booking', {
   // Existing fields
@@ -43,6 +44,14 @@ const Booking = sequelize.define('Booking', {
     allowNull: false,
     defaultValue: 'active',
   },
+  groupSessionId: {
+    type: DataTypes.INTEGER,
+    allowNull: true, // null means it's a private (one-on-one) session
+    references: {
+      model: GroupSession,
+      key: 'id'
+    }
+  },
   isBookingConfirmed: {
     type: DataTypes.BOOLEAN,
     allowNull: false,
@@ -65,6 +74,10 @@ const Booking = sequelize.define('Booking', {
 // Define associations
 Service.hasMany(Booking, { foreignKey: 'serviceId' });
 Booking.belongsTo(Service, { foreignKey: 'serviceId' });
+
+// Associations
+Booking.belongsTo(GroupSession, { foreignKey: 'groupSessionId', as: 'GroupSession' });
+GroupSession.hasMany(Booking, { foreignKey: 'groupSessionId' });
 
 Trainer.hasMany(Booking, { foreignKey: 'trainerId' });
 Booking.belongsTo(Trainer, { foreignKey: 'trainerId' });

@@ -116,6 +116,8 @@ const trainerRoutes = require('./routes/trainer/trainerRoutes');
 const locationRoutes = require('./routes/locationRoutes');
 const notificationRoutes = require('./routes/notifications'); // Notification routes
 const userInterestRoutes = require('./routes/userInterestRouter');
+const groupSessionsRouter = require('./routes/groupSessions');
+
 
 // Initialize Express app
 const app = express();
@@ -193,6 +195,8 @@ app.use('/api/trainers', trainerRoutes); // Trainer routes
 app.use('/api', categoryRoutes); // Category routes
 app.use('/api/notifications', notificationRoutes); // Notification routes
 app.use('/api/', userInterestRoutes); // User interest routes
+
+app.use('/api/group-sessions', groupSessionsRouter);
 
 // Serve static files
 app.use('/uploads', express.static(uploadDir));

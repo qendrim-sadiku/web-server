@@ -93,4 +93,5 @@ const Trainer = sequelize.define('Trainer', {
 Category.hasMany(Trainer, { foreignKey: 'categoryId' });
 Trainer.belongsTo(Category, { foreignKey: 'categoryId' });
 
+
 module.exports = Trainer;
