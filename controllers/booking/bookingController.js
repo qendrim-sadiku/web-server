@@ -9,6 +9,8 @@ const Category = require('../../models/Category/Category');
 const sequelize = require('../../config/sequelize');
 const moment = require('moment'); // Make sure you have moment.js installed
 const { Op } = require('sequelize'); // Import Op from Sequelize
+const GroupSession = require('../../models/GroupSessions/GroupSession');
+const User = require('../../models/User');
 
 const updatePastBookingsStatus = async () => {
   try {
@@ -66,7 +68,7 @@ const updatePastBookingsStatus = async () => {
 const convertTo24HourFormat = (time) => {
   const [hours, minutes, period] = time.match(/(\d+):(\d+):(\d+)? ?(AM|PM)?/).slice(1);
   let formattedHours = parseInt(hours, 10);
-  
+
   if (period === 'PM' && formattedHours < 12) {
     formattedHours += 12;
   } else if (period === 'AM' && formattedHours === 12) {
@@ -195,6 +197,111 @@ exports.createBooking = async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 };
+
+// exports.createGroupSessionBooking = async (req, res) => {
+//   const transaction = await sequelize.transaction();
+//   try {
+//     const { userId, groupSessionId, participants = [] } = req.body;
+
+//     if (!userId || !groupSessionId) {
+//       return res.status(400).json({ message: 'User ID and Group Session ID are required' });
+//     }
+
+//     // Fetch group session details
+//     const groupSession = await GroupSession.findByPk(groupSessionId, {
+//       include: [
+//         { model: Trainer, as: 'Trainer' },
+//         { model: Service, as: 'Service' },
+//       ],
+//     });
+
+//     if (!groupSession) {
+//       return res.status(404).json({ message: 'Group session not found' });
+//     }
+
+//     // Check if the group session has available spots
+//     if (groupSession.currentEnrollment >= groupSession.maxGroupSize) {
+//       return res.status(400).json({ message: 'Group session is fully booked' });
+//     }
+
+//     // Calculate total price based on participants
+//     const totalPrice = participants.length * groupSession.pricePerPerson;
+
+//     // Create the booking
+//     const booking = await Booking.create(
+//       {
+//         userId,
+//         serviceId: groupSession.serviceId,
+//         trainerId: groupSession.trainerId,
+//         address: groupSession.address,
+//         totalPrice,
+//         status: 'active', // Set the initial status to 'active'
+//         groupSessionId: groupSession.id,
+//       },
+//       { transaction }
+//     );
+
+//     // Associate participants with the booking
+//     if (participants.length > 0) {
+//       const participantData = participants.map((participant) => ({
+//         ...participant,
+//         bookingId: booking.id,
+//       }));
+//       await Participant.bulkCreate(participantData, { transaction });
+//     }
+
+//     // Update the group's current enrollment
+//     groupSession.currentEnrollment += participants.length;
+
+//     // Update group session status based on enrollment
+//     if (groupSession.currentEnrollment >= groupSession.maxGroupSize) {
+//       groupSession.status = 'completed'; // Fully booked
+//     } else {
+//       groupSession.status = 'active'; // Ongoing session
+//     }
+//     await groupSession.save({ transaction });
+
+//     // Create booking session (for auditing/group reference)
+//     await BookingDate.create(
+//       {
+//         date: groupSession.date,
+//         startTime: groupSession.startTime,
+//         endTime: groupSession.endTime,
+//         bookingId: booking.id,
+//         sessionNumber: groupSession.id, // Optional for grouping reference
+//       },
+//       { transaction }
+//     );
+
+//     await transaction.commit();
+
+//     // Return booking details
+//     res.status(201).json({
+//       message: 'Group session booking successful',
+//       booking: {
+//         bookingId: booking.id,
+//         userId: booking.userId,
+//         service: groupSession.Service,
+//         trainer: groupSession.Trainer,
+//         address: booking.address,
+//         totalPrice: booking.totalPrice,
+//         participants,
+//         session: {
+//           date: groupSession.date,
+//           startTime: groupSession.startTime,
+//           endTime: groupSession.endTime,
+//         },
+//       },
+//     });
+//   } catch (error) {
+//     await transaction.rollback();
+//     res.status(500).json({ message: 'Failed to book group session', error: error.message });
+//   }
+// };
+
+
+
+
 
 
 // exports.createBooking = async (req, res) => {
@@ -634,6 +741,105 @@ exports.createBooking = async (req, res) => {
 
 
 // Get user bookings with pagination
+
+exports.createGroupSessionBooking = async (req, res) => {
+  const transaction = await sequelize.transaction();
+  try {
+    const { userId, groupSessionId } = req.body;
+
+    if (!userId || !groupSessionId) {
+      return res.status(400).json({ message: 'User ID and Group Session ID are required' });
+    }
+
+    // Fetch group session details
+    const groupSession = await GroupSession.findByPk(groupSessionId, {
+      include: [
+        { model: Trainer, as: 'Trainer' },
+        { model: Service, as: 'Service' },
+      ],
+    });
+
+    if (!groupSession) {
+      return res.status(404).json({ message: 'Group session not found' });
+    }
+
+    // Check if the group session has available spots
+    if (groupSession.currentEnrollment >= groupSession.maxGroupSize) {
+      return res.status(400).json({ message: 'Group session is fully booked' });
+    }
+
+    // Calculate total price based on a single booking
+    const totalPrice = groupSession.pricePerPerson;
+
+    // Create the booking
+    const booking = await Booking.create(
+      {
+        userId,
+        serviceId: groupSession.serviceId,
+        trainerId: groupSession.trainerId,
+        address: groupSession.address,
+        totalPrice,
+        status: 'active',
+        groupSessionId: groupSession.id,
+      },
+      { transaction }
+    );
+
+    // Increment currentEnrollment in the database
+    await groupSession.increment('currentEnrollment', { by: 1, transaction });
+    await groupSession.reload({ transaction }); // Ensure instance is updated
+
+    console.log('Updated Enrollment:', groupSession.currentEnrollment); // Debugging log
+
+    // Update group session status based on enrollment
+    if (groupSession.currentEnrollment >= groupSession.maxGroupSize) {
+      groupSession.status = 'completed'; // Fully booked
+    } else {
+      groupSession.status = 'active'; // Ongoing session
+    }
+    await groupSession.save({ transaction });
+
+    // Create booking session (for auditing/group reference)
+    await BookingDate.create(
+      {
+        date: groupSession.date,
+        startTime: groupSession.startTime,
+        endTime: groupSession.endTime,
+        bookingId: booking.id,
+      },
+      { transaction }
+    );
+
+    await transaction.commit();
+
+    // Return booking details
+    res.status(201).json({
+      message: 'Group session booking successful',
+      booking: {
+        bookingId: booking.id,
+        userId: booking.userId,
+        service: groupSession.Service,
+        trainer: groupSession.Trainer,
+        address: booking.address,
+        totalPrice: booking.totalPrice,
+        session: {
+          date: groupSession.date,
+          startTime: groupSession.startTime,
+          endTime: groupSession.endTime,
+        },
+      },
+    });
+  } catch (error) {
+    await transaction.rollback();
+    console.error('Error booking group session:', error);
+    res.status(500).json({ message: 'Failed to book group session', error: error.message });
+  }
+};
+
+
+
+
+
 exports.getUserBookingsWithPagination = async (req, res) => {
   try {
     // Update past bookings before fetching
@@ -642,14 +848,230 @@ exports.getUserBookingsWithPagination = async (req, res) => {
     const { userId } = req.params;
     const { page = 1, limit = 10 } = req.query; // Default pagination values
 
-    // Calculate offset for pagination
     const offset = (page - 1) * limit;
 
     // Fetch bookings with pagination
     const { count, rows: bookings } = await Booking.findAndCountAll({
       where: { userId },
-      limit: parseInt(limit),
-      offset: parseInt(offset),
+      limit: parseInt(limit, 10),
+      offset,
+      order: [['createdAt', 'DESC']], // Show latest bookings first
+      include: [
+        {
+          model: Participant,
+        },
+        {
+          model: BookingDate,
+          attributes: ['date', 'startTime', 'endTime', 'createdAt'],
+        },
+        {
+          model: Service,
+          attributes: ['id', 'name', 'description', 'image', 'duration', 'hourlyRate', 'level'],
+          include: [
+            {
+              model: ServiceDetails,
+              attributes: [
+                'fullDescription',
+                'highlights',
+                'whatsIncluded',
+                'whatsNotIncluded',
+                'recommendations',
+                'coachInfo',
+              ],
+            },
+            {
+              model: Trainer,
+              attributes: ['id', 'name', 'surname', 'avatar', 'hourlyRate', 'userRating'],
+            },
+            {
+              model: SubCategory,
+              attributes: ['id', 'name'],
+              include: [
+                {
+                  model: Category,
+                  attributes: ['id', 'name'],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+
+    // Process bookings to include only the latest session
+    const filteredBookings = bookings.map((booking) => ({
+      ...booking.toJSON(),
+      latestBookingDate: booking.BookingDates.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))[0],
+    }));
+
+    res.status(200).json({
+      totalItems: count,
+      totalBookingsOnCurrentPage: bookings.length,
+      totalPages: Math.ceil(count / parseInt(limit, 10)), // Fix calculation here
+      currentPage: parseInt(page, 10),
+      bookings: filteredBookings,
+    });
+  } catch (error) {
+    console.error('Error fetching paginated bookings:', error);
+    res.status(500).json({ error: 'Failed to fetch user bookings.' });
+  }
+};
+
+
+
+exports.getPaginatedFilteredBookingsOfUser = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const {
+      page = 1,
+      limit = 10,
+      status,
+      startDate,
+      endDate,
+      categoryOrSubcategory,
+    } = req.query;
+
+    const offset = (page - 1) * limit;
+    const whereClause = { userId };
+
+    // -- 1) STATUS
+    if (status) {
+      whereClause.status = status;
+    }
+
+    // -- 2) DATES
+    const bookingDateWhereClause = {};
+    if (startDate) {
+      bookingDateWhereClause.date = { [Op.gte]: startDate };
+    }
+    if (endDate) {
+      bookingDateWhereClause.date = {
+        ...(bookingDateWhereClause.date || {}),
+        [Op.lte]: endDate,
+      };
+    }
+
+    // Build the subCategory include
+    const subCategoryInclude = {
+      model: SubCategory,
+      attributes: ['id', 'name'],
+      include: [
+        {
+          model: Category,
+          attributes: ['id', 'name'],
+        },
+      ],
+      // If filtering by name
+      required: false, // or true if you want to strictly match
+    };
+
+    if (categoryOrSubcategory) {
+      subCategoryInclude.where = {
+        [Op.or]: [
+          { name: categoryOrSubcategory },          // SubCategory.name
+          { '$Category.name$': categoryOrSubcategory }, // Category.name
+        ],
+      };
+      // If you only want Bookings that definitely match either subcategory or category:
+      subCategoryInclude.required = true;
+    }
+
+    // Build the main service include
+    const serviceInclude = {
+      model: Service,
+      attributes: [
+        'id',
+        'name',
+        'description',
+        'image',
+        'duration',
+        'hourlyRate',
+        'level',
+      ],
+      // If you want the booking to definitely have a matching service if categoryOrSubcategory was provided:
+      required: !!categoryOrSubcategory, 
+      include: [
+        {
+          model: ServiceDetails,
+          attributes: [
+            'fullDescription',
+            'highlights',
+            'whatsIncluded',
+            'whatsNotIncluded',
+            'recommendations',
+            'coachInfo',
+          ],
+        },
+        {
+          model: Trainer,
+          attributes: [
+            'id',
+            'name',
+            'surname',
+            'avatar',
+            'hourlyRate',
+            'userRating',
+          ],
+        },
+        subCategoryInclude,
+      ],
+    };
+
+    // Finally, run the query
+    const { count, rows } = await Booking.findAndCountAll({
+      where: whereClause,
+      limit: parseInt(limit, 10),
+      offset,
+      order: [['createdAt', 'DESC']],
+      distinct: true, // avoids duplicated row inflation in the count
+      include: [
+        {
+          model: Participant,
+        },
+        {
+          model: BookingDate,
+          where: Object.keys(bookingDateWhereClause).length
+            ? bookingDateWhereClause
+            : undefined,
+          // If you want only Bookings that definitely have a date in the given range:
+          required: Object.keys(bookingDateWhereClause).length > 0,
+          attributes: ['date', 'startTime', 'endTime', 'createdAt'],
+        },
+        serviceInclude,
+      ],
+    });
+
+    // Map the results
+    const filteredBookings = rows.map((booking) => ({
+      ...booking.toJSON(),
+      latestBookingDate: booking.BookingDates?.sort(
+        (a, b) => new Date(b.createdAt) - new Date(a.createdAt)
+      )[0],
+    }));
+
+    res.json({
+      totalItems: count,
+      totalBookingsOnCurrentPage: rows.length,
+      totalPages: Math.ceil(count / parseInt(limit, 10)),
+      currentPage: parseInt(page, 10),
+      bookings: filteredBookings,
+    });
+  } catch (error) {
+    console.error('Error fetching filtered bookings with pagination:', error);
+    res.status(500).json({ error: 'Failed to fetch bookings with pagination.' });
+  }
+};
+
+
+
+
+exports.getAllBookingsOfUser = async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    // Fetch all bookings for the user
+    const bookings = await Booking.findAll({
+      where: { userId },
       include: [
         { model: Participant },
         {
@@ -666,266 +1088,67 @@ exports.getUserBookingsWithPagination = async (req, res) => {
             },
             {
               model: Trainer,
+              through: { attributes: [] },
+              attributes: ['id', 'name', 'surname', 'avatar', 'hourlyRate', 'userRating'],
             },
             {
               model: SubCategory,
               attributes: ['id', 'name'],
-              include: [
-                {
-                  model: Category,
-                  attributes: ['id', 'name'],
-                },
-              ],
+              include: [{ model: Category, attributes: ['id', 'name'] }],
             },
           ],
         },
       ],
     });
 
-    // Process bookings to include only the latest createdAt dates
-    const filteredBookings = bookings.map(booking => {
-      const latestCreatedAt = booking.BookingDates.reduce((latest, date) => {
-        return new Date(date.createdAt) > new Date(latest.createdAt) ? date : latest;
-      }, booking.BookingDates[0]).createdAt;
+    // Process each booking to include group session data if `groupSessionId` exists
+    const updatedBookings = await Promise.all(
+      bookings.map(async (booking) => {
+        const bookingData = booking.toJSON();
 
-      const validDates = booking.BookingDates.filter(date => date.createdAt === latestCreatedAt);
+        if (booking.groupSessionId) {
+          const groupSession = await GroupSession.findByPk(booking.groupSessionId, {
+            attributes: ['id', 'date', 'startTime', 'endTime', 'maxGroupSize', 'currentEnrollment', 'status'],
+            include: [
+              { model: Trainer, attributes: ['id', 'name', 'surname'] },
+              { model: Service, attributes: ['id', 'name', 'description', 'image'] },
+            ],
+          });
 
-      return {
-        ...booking.toJSON(),
-        BookingDates: validDates,
-      };
-    });
+          bookingData.groupSession = groupSession || null;
+        }
 
-    // Return paginated response
-    res.status(200).json({
-      totalItems: count,
-      totalPages: Math.ceil(count / limit),
-      currentPage: parseInt(page),
-      bookings: filteredBookings,
-    });
+        return bookingData;
+      })
+    );
+
+    res.status(200).json(updatedBookings);
   } catch (error) {
+    console.error('Error fetching bookings:', error);
     res.status(500).json({ error: error.message });
   }
 };
 
 
-exports.getPaginatedFilteredBookingsOfUser = async (req, res) => {
-  try {
-    const { userId } = req.params;
-    const {
-      categoryOrSubcategory,
-      startDate,
-      endDate,
-      status,
-      page = 1,
-      limit = 10,
-    } = req.query;
 
-    const offset = (page - 1) * limit;
-    const whereClause = { userId };
-
-    // Apply status filter
-    if (status) {
-      whereClause.status = status;
-    }
-
-    // Sequelize-specific filtering for nested models
-    const includeFilters = [];
-
-    // Add filter for category or subcategory
-    if (categoryOrSubcategory) {
-      includeFilters.push({
-        model: Service,
-        as: 'Service', // Ensure alias matches your model association
-        required: true,
-        include: [
-          {
-            model: SubCategory,
-            as: 'SubCategory', // Ensure alias matches your model association
-            required: true,
-            where: { name: categoryOrSubcategory },
-            attributes: ['id', 'name'],
-          },
-        ],
-      });
-    } else {
-      includeFilters.push({
-        model: Service,
-        as: 'Service',
-        required: true,
-        include: [
-          {
-            model: SubCategory,
-            as: 'SubCategory',
-            attributes: ['id', 'name'],
-          },
-        ],
-      });
-    }
-
-    // Add date filter
-    if (startDate && endDate) {
-      includeFilters.push({
-        model: BookingDate,
-        as: 'BookingDates', // Ensure alias matches your model association
-        required: true,
-        where: {
-          date: {
-            [Op.between]: [startDate, endDate],
-          },
-        },
-        attributes: ['date', 'startTime', 'endTime', 'createdAt'],
-      });
-    } else {
-      includeFilters.push({
-        model: BookingDate,
-        as: 'BookingDates',
-        required: true,
-        attributes: ['date', 'startTime', 'endTime', 'createdAt'],
-      });
-    }
-
-    // Fetch paginated and filtered bookings
-    const { count, rows: bookings } = await Booking.findAndCountAll({
-      where: whereClause,
-      limit: parseInt(limit, 10),
-      offset,
-      distinct: true,
-      include: [
-        { model: Participant, as: 'Participants' },
-        ...includeFilters,
-      ],
-    });
-
-    // Process bookings to include only the latest BookingDate
-    const filteredBookings = bookings.map(booking => {
-      // Find the latest BookingDate based on createdAt
-      const latestBookingDate = booking.BookingDates.reduce((latest, current) => {
-        return new Date(current.createdAt) > new Date(latest.createdAt) ? current : latest;
-      }, booking.BookingDates[0]);
-
-      // Keep only the latest BookingDate
-      return {
-        ...booking.toJSON(),
-        BookingDates: [latestBookingDate],
-      };
-    });
-
-    // Return paginated response
-    res.status(200).json({
-      bookings: filteredBookings,
-      totalBookings: count,
-      totalPages: Math.ceil(count / limit),
-      currentPage: parseInt(page),
-    });
-  } catch (error) {
-    console.error('Error in pagination:', error.message);
-    res.status(500).json({ error: 'Failed to fetch bookings with pagination.' });
-  }
-};
-
-
-
-
-// Get all bookings of a user
-exports.getAllBookingsOfUser = async (req, res) => {
-  try {
-    // Update past bookings before fetching
-    await updatePastBookingsStatus();
-
-    const { userId } = req.params;
-
-    // Fetch bookings for the user
-    const bookings = await Booking.findAll({
-      where: { userId },
-      include: [
-        { model: Participant },
-        {
-          model: BookingDate,
-          attributes: ['date', 'startTime', 'endTime', 'createdAt'],
-        },
-        {
-          model: Service,
-          attributes: ['id', 'name', 'description', 'image', 'duration', 'hourlyRate', 'level'],
-          include: [
-            {
-              model: ServiceDetails,
-              attributes: [
-                'fullDescription',
-                'highlights',
-                'whatsIncluded',
-                'whatsNotIncluded',
-                'recommendations',
-                'coachInfo',
-              ],
-            },
-            {
-              model: Trainer,
-            },
-            {
-              model: SubCategory,
-              attributes: ['id', 'name'],
-              include: [
-                {
-                  model: Category,
-                  attributes: ['id', 'name'],
-                },
-              ],
-            },
-          ],
-        },
-      ],
-    });
-
-    const filteredBookings = bookings.map((booking) => {
-      // Sort BookingDates by date and time to find the most recent one
-      const validDates = booking.BookingDates.sort((a, b) => {
-        const dateA = new Date(`${a.date}T${a.endTime}`);
-        const dateB = new Date(`${b.date}T${b.endTime}`);
-        return dateB - dateA; // Sort descending (latest first)
-      });
-
-      // If you want all dates sorted, simply return the sorted array
-      // Otherwise, if you want only the latest date, return the first element
-      return {
-        ...booking.toJSON(),
-        BookingDates: validDates, // Return sorted or latest BookingDates
-      };
-    });
-
-    res.status(200).json(filteredBookings);
-  } catch (error) {
-    console.error('Error fetching bookings:', error.message);
-    res.status(500).json({ error: error.message });
-  }
-};
 
 
 
 exports.getBookingById = async (req, res) => {
   try {
-    const { id } = req.params; // Booking ID from the URL
-    const { userId } = req.query; // User ID from the query parameters
+    const { id } = req.params;
 
-    // Find the booking by id and userId
+    // Fetch booking by ID
     const booking = await Booking.findOne({
-      where: {
-        id, // Booking ID
-        userId, // Filter by user ID
-      },
+      where: { id },
       include: [
         {
           model: Participant,
-          where: { bookingId: id },
-          required: false, // Allow bookings without participants
+          attributes: ['id', 'name', 'surname', 'age', 'category'],
         },
         {
           model: BookingDate,
-          where: {
-            bookingId: id, // Filter BookingDate by booking ID
-          },
-          attributes: ['date', 'startTime', 'endTime'], // Include date, startTime, endTime
-          required: true, // Ensure at least one BookingDate is required
+          attributes: ['id', 'date', 'startTime', 'endTime'],
         },
         {
           model: Service,
@@ -933,20 +1156,12 @@ exports.getBookingById = async (req, res) => {
           include: [
             {
               model: ServiceDetails,
-              attributes: [
-                'fullDescription',
-                'highlights',
-                'whatsIncluded',
-                'whatsNotIncluded',
-                'recommendations',
-                'whatsToBring',
-                'coachInfo',
-              ],
+              attributes: ['fullDescription', 'highlights', 'whatsIncluded', 'whatsNotIncluded', 'recommendations', 'coachInfo'],
             },
             {
               model: Trainer,
-              through: { attributes: [] }, // Include Trainer through the ServiceTrainer join table
-              attributes: ['id', 'name', 'surname', 'avatar', 'hourlyRate', 'userRating'], // Only fetch necessary fields
+              through: { attributes: [] },
+              attributes: ['id', 'name', 'surname', 'avatar', 'hourlyRate', 'userRating'],
             },
           ],
         },
@@ -957,23 +1172,27 @@ exports.getBookingById = async (req, res) => {
       return res.status(404).json({ message: 'Booking not found' });
     }
 
-    // Sort and keep the most recent date based on the `date` field
-    const validDates = booking.BookingDates.sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 1);
+    // If groupSessionId exists, fetch additional group session data
+    if (booking.groupSessionId) {
+      const groupSession = await GroupSession.findByPk(booking.groupSessionId, {
+        attributes: ['id', 'date', 'startTime', 'endTime', 'maxGroupSize', 'currentEnrollment', 'status'],
+        include: [
+          { model: Trainer, attributes: ['id', 'name', 'surname'] },
+          { model: Service, attributes: ['id', 'name', 'description', 'image'] },
+        ],
+      });
 
-    // Extract the associated trainer for this booking through the service
-    const selectedTrainer = booking.Service?.Trainers?.[0] || null; // Select the first trainer
+      booking.dataValues.groupSession = groupSession || null;
+    }
 
-    // Send the response with all required fields, including the date, startTime, endTime, and trainer
-    res.status(200).json({
-      ...booking.toJSON(),
-      BookingDates: validDates, // Return the most recent valid date
-      Trainer: selectedTrainer, // Return the trainer associated with the service
-    });
+    res.status(200).json(booking);
   } catch (error) {
-    console.error('Error in getBookingById:', error);
-    res.status(500).json({ error: error.message });
+    console.error('Error fetching booking:', error);
+    res.status(500).json({ error: 'An error occurred while fetching the booking.' });
   }
 };
+
+
 
 exports.getBookingsByIds = async (req, res) => {
   try {
@@ -1275,13 +1494,11 @@ exports.cancelBooking = async (req, res) => {
   }
 };
 
-// Get user bookings with categorized data
 exports.getUserBookings = async (req, res) => {
   try {
-    const userId = req.user.id; // Assuming the user ID is obtained from authenticated user
-    const currentDate = new Date(); // Get the current date
+    const userId = req.user.id;
+    const currentDate = new Date();
 
-    // Fetch bookings with related services, trainers, subcategories, categories, and booking dates
     const bookings = await Booking.findAll({
       where: { userId },
       include: [
@@ -1302,49 +1519,43 @@ exports.getUserBookings = async (req, res) => {
             {
               model: Trainer,
               attributes: ['id', 'name'],
-              through: { attributes: [] }, // Many-to-many relationship without including junction table attributes
+              through: { attributes: [] },
             },
           ],
         },
         {
           model: BookingDate,
-          attributes: ['date', 'startTime', 'endTime', 'createdAt'], // Include createdAt for filtering purposes
+          attributes: ['date', 'startTime', 'endTime', 'createdAt'],
+        },
+        {
+          model: GroupSession,
+          as: 'GroupSession',
+          attributes: ['id', 'date', 'startTime', 'endTime', 'maxGroupSize', 'currentEnrollment', 'status'],
         },
       ],
     });
 
-    // Categorize bookings
     const categorizedBookings = {
       upcoming: [],
       past: [],
       canceled: [],
     };
 
-    bookings.forEach(booking => {
+    bookings.forEach((booking) => {
       if (booking.BookingDates.length > 0) {
-        // Find the most recent createdAt date in the BookingDates array
-        const latestCreatedAt = booking.BookingDates.reduce((latest, current) => {
-          return new Date(current.createdAt) > new Date(latest.createdAt) ? current : latest;
-        }).createdAt;
-
-        // Filter the BookingDates to keep only the ones that match the latest createdAt
-        const validDates = booking.BookingDates.filter(date => date.createdAt === latestCreatedAt);
-
-        // Iterate over valid dates and categorize based on status and date
-        validDates.forEach(bookingDate => {
-          const bookingDateTime = new Date(`${bookingDate.date}T${bookingDate.startTime}`);
-
-          if (booking.status === 'canceled') {
-            // Categorize canceled bookings
-            categorizedBookings.canceled.push(booking);
-          } else if (bookingDateTime > currentDate) {
-            // Categorize upcoming bookings
-            categorizedBookings.upcoming.push(booking);
-          } else {
-            // Categorize past bookings
-            categorizedBookings.past.push(booking);
-          }
+        const latestDate = booking.BookingDates.reduce((latest, date) => {
+          return new Date(date.date) > new Date(latest.date) ? date : latest;
         });
+
+        const bookingDateTime = new Date(`${latestDate.date}T${latestDate.endTime}`);
+
+        if (booking.status === 'canceled') {
+          categorizedBookings.canceled.push(booking);
+        } else if (bookingDateTime > currentDate) {
+          categorizedBookings.upcoming.push(booking);
+        } else {
+          categorizedBookings.past.push(booking);
+        }
       }
     });
 
@@ -1409,17 +1620,15 @@ exports.rebookService = async (req, res) => {
 
 exports.getFilteredBookingsOfUser = async (req, res) => {
   try {
-    // Update past bookings before fetching
-    await updatePastBookingsStatus();
-
     const { userId } = req.params;
     const { categoryOrSubcategory, startDate, endDate } = req.query;
 
-    // Fetch bookings of the user
     const bookings = await Booking.findAll({
       where: { userId },
       include: [
-        { model: Participant },
+        {
+          model: Participant,
+        },
         {
           model: BookingDate,
           attributes: ['date', 'startTime', 'endTime', 'createdAt'],
@@ -1430,14 +1639,7 @@ exports.getFilteredBookingsOfUser = async (req, res) => {
           include: [
             {
               model: ServiceDetails,
-              attributes: [
-                'fullDescription',
-                'highlights',
-                'whatsIncluded',
-                'whatsNotIncluded',
-                'recommendations',
-                'coachInfo',
-              ],
+              attributes: ['fullDescription', 'highlights', 'whatsIncluded', 'whatsNotIncluded', 'recommendations', 'coachInfo'],
             },
             {
               model: Trainer,
@@ -1460,7 +1662,6 @@ exports.getFilteredBookingsOfUser = async (req, res) => {
     const filteredBookings = bookings.filter((booking) => {
       let matches = true;
 
-      // Check category or subcategory filter
       if (categoryOrSubcategory) {
         const matchesCategoryOrSubcategory =
           booking.Service.SubCategory.name === categoryOrSubcategory ||
@@ -1468,7 +1669,6 @@ exports.getFilteredBookingsOfUser = async (req, res) => {
         matches = matches && matchesCategoryOrSubcategory;
       }
 
-      // Check date filter
       if (startDate && endDate) {
         const start = moment(startDate, 'YYYY-MM-DD').startOf('day');
         const end = moment(endDate, 'YYYY-MM-DD').endOf('day');
@@ -1484,6 +1684,20 @@ exports.getFilteredBookingsOfUser = async (req, res) => {
       return matches;
     });
 
+    // Append group session data to filtered bookings with groupSessionId
+    for (const booking of filteredBookings) {
+      if (booking.groupSessionId) {
+        const groupSession = await GroupSession.findByPk(booking.groupSessionId, {
+          attributes: ['id', 'date', 'startTime', 'endTime', 'maxGroupSize', 'currentEnrollment', 'status'],
+          include: [
+            { model: Trainer, attributes: ['id', 'name', 'surname'] },
+            { model: Service, attributes: ['id', 'name', 'description', 'image'] },
+          ],
+        });
+        booking.dataValues.groupSession = groupSession || null;
+      }
+    }
+
     res.status(200).json(filteredBookings);
   } catch (error) {
     console.error('Error fetching filtered bookings:', error);
@@ -1492,28 +1706,21 @@ exports.getFilteredBookingsOfUser = async (req, res) => {
 };
 
 
-// Method to get user bookings based on selected dates
 exports.getUserBookingsByDates = async (req, res) => {
   try {
     const { userId } = req.params;
-    const { dates } = req.body; // Expecting an array of date strings in 'YYYY-MM-DD' format
+    const { dates } = req.body;
 
-    // Validate that dates are provided
     if (!dates || !Array.isArray(dates) || dates.length === 0) {
       return res.status(400).json({ error: 'No dates provided' });
     }
 
-    // Fetch bookings that match the userId and have BookingDates matching the selected dates
     const bookings = await Booking.findAll({
       where: { userId },
       include: [
         {
           model: BookingDate,
-          where: {
-            date: {
-              [Op.in]: dates,
-            },
-          },
+          where: { date: { [Op.in]: dates } },
           attributes: ['date', 'startTime', 'endTime', 'createdAt'],
         },
         {
@@ -1521,39 +1728,16 @@ exports.getUserBookingsByDates = async (req, res) => {
         },
         {
           model: Service,
-          attributes: [
-            'id',
-            'name',
-            'description',
-            'image',
-            'duration',
-            'hourlyRate',
-            'level',
-          ],
+          attributes: ['id', 'name', 'description', 'image', 'duration', 'hourlyRate', 'level'],
           include: [
             {
               model: ServiceDetails,
-              attributes: [
-                'fullDescription',
-                'highlights',
-                'whatsIncluded',
-                'whatsNotIncluded',
-                'recommendations',
-                'coachInfo',
-              ],
+              attributes: ['fullDescription', 'highlights', 'whatsIncluded', 'whatsNotIncluded', 'recommendations', 'coachInfo'],
             },
             {
               model: Trainer,
-            },
-            {
-              model: SubCategory,
-              attributes: ['id', 'name'],
-              include: [
-                {
-                  model: Category,
-                  attributes: ['id', 'name'],
-                },
-              ],
+              through: { attributes: [] },
+              attributes: ['id', 'name', 'surname', 'avatar', 'hourlyRate', 'userRating'],
             },
           ],
         },

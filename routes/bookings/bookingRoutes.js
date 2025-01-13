@@ -3,6 +3,8 @@ const bookingController = require('../../controllers/booking/bookingController')
 const router = express.Router();
 
 router.post('/bookings', bookingController.createBooking);
+// Group session booking route
+router.post('/group-bookings', bookingController.createGroupSessionBooking);
 router.get('/bookings/user/:userId', bookingController.getAllBookingsOfUser);
 
 router.get('/bookings/user/:userId/paginated', bookingController.getUserBookingsWithPagination);

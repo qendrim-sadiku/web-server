@@ -82,4 +82,5 @@ GroupSession.hasMany(Booking, { foreignKey: 'groupSessionId' });
 Trainer.hasMany(Booking, { foreignKey: 'trainerId' });
 Booking.belongsTo(Trainer, { foreignKey: 'trainerId' });
 
+
 module.exports = Booking;
