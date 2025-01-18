@@ -103,7 +103,8 @@ exports.getTrainerDetails = async (req, res) => {
       include: [
         {
           model: Review,
-          include: [{ model: User, attributes: ['username'] }],
+          include: [{ model: User, attributes: ['username', 'name', 'surname', 'avatar'] }],
+          
         },
         {
           model: Booking,

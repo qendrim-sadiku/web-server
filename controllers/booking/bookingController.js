@@ -1041,13 +1041,28 @@ exports.getPaginatedFilteredBookingsOfUser = async (req, res) => {
       ],
     });
 
-    // Map the results
-    const filteredBookings = rows.map((booking) => ({
-      ...booking.toJSON(),
-      latestBookingDate: booking.BookingDates?.sort(
-        (a, b) => new Date(b.createdAt) - new Date(a.createdAt)
-      )[0],
-    }));
+        // Fetch group session data
+        const groupSessionIds = [...new Set(rows.map((b) => b.groupSessionId))];
+        const groupSessions = await GroupSession.findAll({
+          where: {
+            id: groupSessionIds,
+          },
+          attributes: ['id', 'maxGroupSize', 'currentEnrollment'],
+        });
+    
+        const groupSessionMap = groupSessions.reduce((acc, session) => {
+          acc[session.id] = session;
+          return acc;
+        }, {});
+    
+        // Map the results with group session data
+        const filteredBookings = rows.map((booking) => ({
+          ...booking.toJSON(),
+          groupSessionData: groupSessionMap[booking.groupSessionId] || null,
+          latestBookingDate: booking.BookingDates?.sort(
+            (a, b) => new Date(b.createdAt) - new Date(a.createdAt)
+          )[0],
+        }));
 
     res.json({
       totalItems: count,

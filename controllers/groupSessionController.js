@@ -5,6 +5,9 @@ const { Service, ServiceTrainer } = require('../models/Services/Service');
 const Trainer = require('../models/Trainer/Trainer');
 const Booking = require('../models/Bookings/Booking');
 const { Op } = require('sequelize');
+const ServiceDetails = require('../models/Services/ServiceDetails');
+const Review = require('../models/Trainer/Review');
+const User = require('../models/User');
 
 /**
  * Create a new group session (trainer side)
@@ -158,26 +161,53 @@ exports.getAllGroupSessions = async (req, res) => {
  * Fetch a single group session by ID
  */
 exports.getGroupSessionById = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const groupSession = await GroupSession.findByPk(id, {
-      include: [
-        { model: Trainer, attributes: ['id', 'name', 'surname', 'avatar'] },
-        { model: Service, attributes: ['id', 'name', 'description'] }
-      ]
-    });
-
-    if (!groupSession) {
-      return res.status(404).json({ message: 'Group session not found' });
+    try {
+      const { id } = req.params;
+      const groupSession = await GroupSession.findByPk(id, {
+        include: [
+          {
+            model: Trainer,
+            attributes: ['id', 'name', 'surname', 'avatar','userRating'],
+            include: [
+                {
+                  model: Review,
+                  attributes: ['userId','rating','comment'], 
+                  include: [{ model: User, attributes: ['username', 'name', 'surname', 'avatar'] }],
+                },
+              ],
+          },
+          {
+            model: Service,
+            attributes: ['id', 'name', 'description','image'],
+            include: [
+              {
+                model: ServiceDetails,
+                attributes: [
+                  'fullDescription',
+                  'highlights',
+                  'whatsIncluded',
+                  'whatsNotIncluded',
+                  'recommendations',
+                  'whatsToBring',
+                  'coachInfo',
+                  'serviceImage'
+                ]
+              }
+            ]
+          }
+        ]
+      });
+  
+      if (!groupSession) {
+        return res.status(404).json({ message: 'Group session not found' });
+      }
+  
+      res.status(200).json(groupSession);
+    } catch (error) {
+      console.error('Error fetching group session by ID:', error);
+      res.status(500).json({ error: error.message });
     }
-
-    res.status(200).json(groupSession);
-  } catch (error) {
-    console.error('Error fetching group session by ID:', error);
-    res.status(500).json({ error: error.message });
-  }
-};
-
+  };
 /**
  * Fetch all group sessions for a specific service
  */
