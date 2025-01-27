@@ -134,24 +134,32 @@ if (!fs.existsSync(uploadDir)) {
 app.use(bodyParser.json()); // Parse JSON request bodies
 app.use(bodyParser.urlencoded({ extended: true })); // Parse URL-encoded data
 
-// CORS Configuration
 const allowedOrigins = [
-  'http://localhost:4200', // Local Angular development
-  'https://aroit.com', // Your Angular production domain
+  'http://localhost:4200',      // Angular dev
+  'https://aroit.com',          // Production domain
+  'capacitor://localhost',      // iOS
+  'http://localhost',           // Android
+  'https://localhost',          // HTTPS local dev
+  // Add any others if necessary
 ];
 
 app.use(
   cors({
     origin: (origin, callback) => {
-      if (!origin || allowedOrigins.includes(origin)) {
-        callback(null, true); // Allow if origin is in the list
-      } else {
-        callback(new Error(`CORS not allowed from origin: ${origin}`));
+      // Allow requests with no origin (e.g. mobile apps, curl requests)
+      if (!origin) {
+        return callback(null, true);
       }
+      // If origin is in the allowed list, allow it
+      if (allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+      // Otherwise, block
+      return callback(new Error(`CORS not allowed from origin: ${origin}`));
     },
-    credentials: true, // Allow cookies and authentication headers
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'], // Allowed HTTP methods
-    allowedHeaders: ['Content-Type', 'Authorization'], // Allowed headers
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
   })
 );
 

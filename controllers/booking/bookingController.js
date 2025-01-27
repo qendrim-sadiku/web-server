@@ -18,7 +18,9 @@ const updatePastBookingsStatus = async () => {
 
     // Find all bookings that are not already marked as "completed"
     const bookings = await Booking.findAll({
-      where: { status: { [Op.ne]: 'completed' } }, // Exclude already completed bookings
+      where: {
+        status: { [Op.ne]: 'completed' },
+      },
       include: [
         {
           model: BookingDate,
@@ -28,32 +30,33 @@ const updatePastBookingsStatus = async () => {
     });
 
     for (let booking of bookings) {
-      let hasFutureDate = false;
-      let hasPastDate = false;
+      // 1) Find the *latest* date/time for this booking
+      let maxDateTime = null;
 
-      // Check all associated BookingDates
-      booking.BookingDates.forEach((bookingDate) => {
-        const bookingDateTime = new Date(`${bookingDate.date}T${bookingDate.endTime}`);
-
-        if (bookingDateTime > currentDate) {
-          hasFutureDate = true;
-        } else if (bookingDateTime < currentDate) {
-          hasPastDate = true;
+      booking.BookingDates.forEach((bd) => {
+        const bdEnd = new Date(`${bd.date}T${bd.endTime}`);
+        if (!maxDateTime || bdEnd > maxDateTime) {
+          maxDateTime = bdEnd;
         }
       });
 
-      // Update booking status based on date checks
-      if (hasFutureDate) {
-        if (booking.status !== 'active') {
-          console.log(`Updating booking ID ${booking.id} status to 'active' due to future dates.`);
-          booking.status = 'active';
-          await booking.save();
-        }
-      } else if (hasPastDate) {
-        if (booking.status !== 'completed') {
-          console.log(`Marking booking ID ${booking.id} as 'completed' due to only past dates.`);
-          booking.status = 'completed';
-          await booking.save();
+      // 2) If the latest date/time is still in the future => status = "active"
+      //    If the latest date/time is in the past => status = "completed"
+      if (maxDateTime) {
+        if (maxDateTime > currentDate) {
+          // The event hasn't finished yet => make sure it's active
+          if (booking.status !== 'active') {
+            booking.status = 'active';
+            await booking.save();
+            console.log(`Booking #${booking.id} set to "active" (still has future dates).`);
+          }
+        } else {
+          // The final session ended => mark completed
+          if (booking.status !== 'completed') {
+            booking.status = 'completed';
+            await booking.save();
+            console.log(`Booking #${booking.id} set to "completed" (all sessions in the past).`);
+          }
         }
       }
     }
@@ -61,6 +64,7 @@ const updatePastBookingsStatus = async () => {
     console.error('Error updating bookings status:', error.message);
   }
 };
+
 
 
 
@@ -78,125 +82,125 @@ const convertTo24HourFormat = (time) => {
   return `${formattedHours.toString().padStart(2, '0')}:${minutes}:00`;
 };
 
-exports.createBooking = async (req, res) => {
-  const transaction = await sequelize.transaction();
-  try {
-    const { userId, serviceId, trainerId: providedTrainerId, address, participants = [], dates } = req.body;
+// exports.createBooking = async (req, res) => {
+//   const transaction = await sequelize.transaction();
+//   try {
+//     const { userId, serviceId, trainerId: providedTrainerId, address, participants = [], dates } = req.body;
 
-    // Ensure dates array is not empty
-    if (!dates || dates.length === 0) {
-      return res.status(400).json({ message: 'Booking dates are required' });
-    }
+//     // Ensure dates array is not empty
+//     if (!dates || dates.length === 0) {
+//       return res.status(400).json({ message: 'Booking dates are required' });
+//     }
 
-    // Fetch the service to get the default trainer if trainerId is not provided
-    let trainerId = providedTrainerId;
-    if (!trainerId) {
-      const service = await Service.findByPk(serviceId);
-      if (!service || !service.defaultTrainerId) {
-        return res.status(400).json({ message: 'No trainer specified and no default trainer found for the service' });
-      }
-      trainerId = service.defaultTrainerId;
-    }
+//     // Fetch the service to get the default trainer if trainerId is not provided
+//     let trainerId = providedTrainerId;
+//     if (!trainerId) {
+//       const service = await Service.findByPk(serviceId);
+//       if (!service || !service.defaultTrainerId) {
+//         return res.status(400).json({ message: 'No trainer specified and no default trainer found for the service' });
+//       }
+//       trainerId = service.defaultTrainerId;
+//     }
 
-    // Fetch the trainer to get the hourly rate
-    const trainer = await Trainer.findByPk(trainerId);
-    if (!trainer) {
-      return res.status(404).json({ message: 'Trainer not found' });
-    }
+//     // Fetch the trainer to get the hourly rate
+//     const trainer = await Trainer.findByPk(trainerId);
+//     if (!trainer) {
+//       return res.status(404).json({ message: 'Trainer not found' });
+//     }
 
-    const createdBookings = [];
+//     const createdBookings = [];
 
-    // Process each date separately to create individual bookings
-    for (let singleDate of dates) {
-      let { date: datePart, startTime, endTime } = singleDate;
+//     // Process each date separately to create individual bookings
+//     for (let singleDate of dates) {
+//       let { date: datePart, startTime, endTime } = singleDate;
 
-      if (!datePart || !startTime || !endTime) {
-        return res.status(400).json({ message: 'Date, start time, and end time are required for each booking session' });
-      }
+//       if (!datePart || !startTime || !endTime) {
+//         return res.status(400).json({ message: 'Date, start time, and end time are required for each booking session' });
+//       }
 
-      // Check if times are in 12-hour format and convert them to 24-hour format
-      if (startTime.match(/(AM|PM)/)) {
-        startTime = convertTo24HourFormat(startTime);
-      }
-      if (endTime.match(/(AM|PM)/)) {
-        endTime = convertTo24HourFormat(endTime);
-      }
+//       // Check if times are in 12-hour format and convert them to 24-hour format
+//       if (startTime.match(/(AM|PM)/)) {
+//         startTime = convertTo24HourFormat(startTime);
+//       }
+//       if (endTime.match(/(AM|PM)/)) {
+//         endTime = convertTo24HourFormat(endTime);
+//       }
 
-      const startDateTime = new Date(`${datePart}T${startTime}`);
-      const endDateTime = new Date(`${datePart}T${endTime}`);
+//       const startDateTime = new Date(`${datePart}T${startTime}`);
+//       const endDateTime = new Date(`${datePart}T${endTime}`);
 
-      if (isNaN(startDateTime.getTime()) || isNaN(endDateTime.getTime())) {
-        return res.status(400).json({ message: 'Invalid date format for start time or end time' });
-      }
+//       if (isNaN(startDateTime.getTime()) || isNaN(endDateTime.getTime())) {
+//         return res.status(400).json({ message: 'Invalid date format for start time or end time' });
+//       }
 
-      const hours = (endDateTime - startDateTime) / (1000 * 60 * 60); // Convert milliseconds to hours
-      if (hours <= 0) {
-        return res.status(400).json({ message: 'End time must be greater than start time' });
-      }
+//       const hours = (endDateTime - startDateTime) / (1000 * 60 * 60); // Convert milliseconds to hours
+//       if (hours <= 0) {
+//         return res.status(400).json({ message: 'End time must be greater than start time' });
+//       }
 
-      const totalPrice = hours * trainer.hourlyRate;
+//       const totalPrice = hours * trainer.hourlyRate;
 
-      // Create the booking for the single date
-      const booking = await Booking.create(
-        {
-          userId,
-          serviceId,
-          trainerId,
-          address,
-          totalPrice,
-        },
-        { transaction }
-      );
+//       // Create the booking for the single date
+//       const booking = await Booking.create(
+//         {
+//           userId,
+//           serviceId,
+//           trainerId,
+//           address,
+//           totalPrice,
+//         },
+//         { transaction }
+//       );
 
-      // Clear any existing participants for this booking
-      await Participant.destroy({ where: { bookingId: booking.id }, transaction });
+//       // Clear any existing participants for this booking
+//       await Participant.destroy({ where: { bookingId: booking.id }, transaction });
 
-      // Associate participants with the current booking
-      if (participants.length > 0) {
-        const participantData = participants.map((participant) => ({
-          ...participant,
-          bookingId: booking.id,
-        }));
-        await Participant.bulkCreate(participantData, { transaction });
-      }
+//       // Associate participants with the current booking
+//       if (participants.length > 0) {
+//         const participantData = participants.map((participant) => ({
+//           ...participant,
+//           bookingId: booking.id,
+//         }));
+//         await Participant.bulkCreate(participantData, { transaction });
+//       }
 
-      // Create the booking session
-      await BookingDate.create(
-        {
-          date: datePart,
-          startTime,
-          endTime,
-          bookingId: booking.id,
-          sessionNumber: 1, // Since this is a single session per booking
-        },
-        { transaction }
-      );
+//       // Create the booking session
+//       await BookingDate.create(
+//         {
+//           date: datePart,
+//           startTime,
+//           endTime,
+//           bookingId: booking.id,
+//           sessionNumber: 1, // Since this is a single session per booking
+//         },
+//         { transaction }
+//       );
 
-      createdBookings.push({
-        bookingId: booking.id,
-        userId: booking.userId,
-        serviceId: booking.serviceId,
-        trainerId: booking.trainerId,
-        address: booking.address,
-        totalPrice: booking.totalPrice,
-        participants,
-        session: {
-          date: datePart,
-          startTime,
-          endTime,
-        },
-      });
-    }
+//       createdBookings.push({
+//         bookingId: booking.id,
+//         userId: booking.userId,
+//         serviceId: booking.serviceId,
+//         trainerId: booking.trainerId,
+//         address: booking.address,
+//         totalPrice: booking.totalPrice,
+//         participants,
+//         session: {
+//           date: datePart,
+//           startTime,
+//           endTime,
+//         },
+//       });
+//     }
 
-    await transaction.commit();
+//     await transaction.commit();
 
-    // Return all created bookings
-    res.status(201).json({ bookings: createdBookings });
-  } catch (error) {
-    await transaction.rollback();
-    res.status(500).json({ error: error.message });
-  }
-};
+//     // Return all created bookings
+//     res.status(201).json({ bookings: createdBookings });
+//   } catch (error) {
+//     await transaction.rollback();
+//     res.status(500).json({ error: error.message });
+//   }
+// };
 
 // exports.createGroupSessionBooking = async (req, res) => {
 //   const transaction = await sequelize.transaction();
@@ -741,6 +745,133 @@ exports.createBooking = async (req, res) => {
 
 
 // Get user bookings with pagination
+
+exports.createBooking = async (req, res) => {
+  const transaction = await sequelize.transaction();
+  try {
+    const {
+      userId,
+      serviceId,
+      trainerId: providedTrainerId,
+      address,
+      participants = [],
+      dates = [],
+    } = req.body;
+
+    // 1) Validate that we actually have dates
+    if (!Array.isArray(dates) || dates.length === 0) {
+      await transaction.rollback();
+      return res.status(400).json({ message: 'At least one booking date is required' });
+    }
+
+    // 2) If trainerId not specified, try to use the service’s default trainer
+    let trainerId = providedTrainerId;
+    if (!trainerId) {
+      const service = await Service.findByPk(serviceId);
+      if (!service || !service.defaultTrainerId) {
+        await transaction.rollback();
+        return res
+          .status(400)
+          .json({ message: 'No trainer specified and no default trainer found for this service' });
+      }
+      trainerId = service.defaultTrainerId;
+    }
+
+    // 3) Fetch trainer to get hourlyRate
+    const trainer = await Trainer.findByPk(trainerId);
+    if (!trainer) {
+      await transaction.rollback();
+      return res.status(404).json({ message: 'Trainer not found' });
+    }
+
+    // 4) Calculate total price by summing up all date/time durations
+    let totalPrice = 0;
+    for (const dateObj of dates) {
+      const { date, startTime, endTime } = dateObj || {};
+      if (!date || !startTime || !endTime) {
+        await transaction.rollback();
+        return res.status(400).json({
+          message: 'Each date must include: { date, startTime, endTime }',
+        });
+      }
+
+      const start = new Date(`${date}T${convertTo24HourFormat(startTime)}`);
+      const end = new Date(`${date}T${convertTo24HourFormat(endTime)}`);
+      if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+        await transaction.rollback();
+        return res.status(400).json({ message: 'Invalid date or time format' });
+      }
+
+      const hours = (end - start) / (1000 * 60 * 60); // difference in hours
+      if (hours <= 0) {
+        await transaction.rollback();
+        return res.status(400).json({ message: 'endTime must be after startTime' });
+      }
+
+      totalPrice += hours * trainer.hourlyRate;
+    }
+
+    // 5) Create a fresh booking row (NO "id" override)
+    //    This ensures we do NOT reuse an existing booking that might have old dates.
+    const booking = await Booking.create(
+      {
+        userId,
+        serviceId,
+        trainerId,
+        address,
+        totalPrice,
+        status: 'active', // or whatever status you prefer
+        isBookingConfirmed: false,
+      },
+      { transaction }
+    );
+
+    // 6) (Optional) Associate participants
+    if (participants.length > 0) {
+      // Map each participant to reference the new booking
+      const participantData = participants.map((p) => ({
+        ...p,
+        bookingId: booking.id,
+      }));
+      await Participant.bulkCreate(participantData, { transaction });
+    }
+
+    // 7) Insert each date/time into BookingDate, referencing THIS new booking id
+    for (const dateObj of dates) {
+      const { date, startTime, endTime } = dateObj;
+      await BookingDate.create(
+        {
+          bookingId: booking.id,
+          date,
+          startTime: convertTo24HourFormat(startTime),
+          endTime: convertTo24HourFormat(endTime),
+        },
+        { transaction }
+      );
+    }
+
+    // Commit the transaction so everything is saved
+    await transaction.commit();
+
+    // 8) OPTIONAL: Fetch the newly created booking + all dates to return in response
+    const newBooking = await Booking.findByPk(booking.id, {
+      include: [
+        { model: BookingDate },
+        { model: Participant },
+      ],
+    });
+
+    // Return just this brand-new booking with ONLY the new dates
+    return res.status(201).json({
+      message: 'Booking created successfully',
+      booking: newBooking,
+    });
+  } catch (error) {
+    await transaction.rollback();
+    console.error('Error creating booking:', error);
+    return res.status(500).json({ error: error.message });
+  }
+};
 
 exports.createGroupSessionBooking = async (req, res) => {
   const transaction = await sequelize.transaction();
