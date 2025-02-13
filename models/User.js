@@ -68,7 +68,7 @@ const User = sequelize.define('User', {
   verificationCode: {
     type: DataTypes.INTEGER,
     allowNull: true,
-  },
+  }, 
   verificationCodeExpires: {
     type: DataTypes.DATE,
     allowNull: true,
@@ -109,6 +109,14 @@ const User = sequelize.define('User', {
         msg: 'Origin must not be empty',
       },
     },
+  },
+  parentUserId: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    references: {
+      model: 'Users', // table name
+      key: 'id'
+    }
   },
   passwordLastUpdatedAt: {
     type: DataTypes.DATE,
@@ -172,6 +180,8 @@ PaymentInfo.belongsTo(User);
 
 User.hasOne(UserPreferences, { onDelete: 'CASCADE' });
 UserPreferences.belongsTo(User);
+
+
 
 
 module.exports = User;

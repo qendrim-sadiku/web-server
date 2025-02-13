@@ -410,15 +410,11 @@ exports.updateMeetingPoints = async (req, res) => {
 };
 
 
-
-
-
-// Get user profile
 // Get user profile
 exports.getUser = async (req, res) => {
   try {
     const user = await User.findByPk(req.params.userId, {
-      attributes: ['id', 'username', 'email', 'name', 'surname', 'avatar', 'password', 'role', 'createdAt', 'updatedAt', 'isProfileCompleted'] // Added avatar here
+      attributes: ['id', 'username', 'email', 'name', 'surname', 'avatar', 'password', 'role', 'createdAt', 'updatedAt', 'isProfileCompleted','parentUserId'] // Added avatar here
     });
 
     if (!user) {

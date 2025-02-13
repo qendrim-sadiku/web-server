@@ -10,13 +10,14 @@ const transporter = nodemailer.createTransport({
 });
 
 // Send email function
-const sendEmail = async (to, subject, text) => {
+const sendEmail = async (to, subject, htmlContent) => {
   try {
     await transporter.sendMail({
       from: process.env.EMAIL_USER,
       to,
       subject,
-      text,
+      // Use 'html' property instead of 'text' to send HTML emails
+      html: htmlContent,
     });
     console.log('Email sent successfully');
   } catch (error) {

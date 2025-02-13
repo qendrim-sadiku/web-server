@@ -11,6 +11,11 @@ const Booking = sequelize.define('Booking', {
     autoIncrement: true,
     primaryKey: true,
   },
+  approved: {
+    type: DataTypes.BOOLEAN,
+    allowNull: false,
+    defaultValue: true, // Default to true unless user has a parent
+  },
   userId: {
     type: DataTypes.INTEGER,
     allowNull: false,

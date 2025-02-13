@@ -118,6 +118,8 @@ const notificationRoutes = require('./routes/notifications'); // Notification ro
 const userInterestRoutes = require('./routes/userInterestRouter');
 const groupSessionsRouter = require('./routes/groupSessions');
 const recentSearchRoutes = require('./routes/recentSearchRoutes');
+const subUserRoutes = require('./routes/subUserRoutes');
+
 
 // Initialize Express app
 const app = express();
@@ -204,6 +206,7 @@ app.use('/api', categoryRoutes); // Category routes
 app.use('/api/notifications', notificationRoutes); // Notification routes
 app.use('/api/', userInterestRoutes); // User interest routes
 app.use('/api/', recentSearchRoutes ); // User interest routes
+app.use('/api', subUserRoutes);
 
 app.use('/api/group-sessions', groupSessionsRouter);
 

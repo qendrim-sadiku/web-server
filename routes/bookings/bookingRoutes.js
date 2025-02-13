@@ -9,9 +9,25 @@ router.get('/bookings/user/:userId', bookingController.getAllBookingsOfUser);
 
 router.get('/bookings/user/:userId/paginated', bookingController.getUserBookingsWithPagination);
 
+// Route to get all bookings of sub-users under a parent user
+router.get('/bookings/sub-user/:parentUserId', bookingController.getSubUserBookings);
+
+// e.g., GET /bookings/sub-user-by-ids/123?ids=5,6,7
+router.get('/bookings/sub-user-by-ids/:parentUserId', bookingController.getSubUserBookingsByIds);
+
+
+router.delete('/bookings/subuser-booking', bookingController.deleteSubUserBooking);
+
+
+router.put('/bookings/approve-subuser/all', bookingController.approveAllSubUserBookings);
+
+router.post('/bookings/subuser-booking', bookingController.createSubUserBooking);
+
+
+router.put('/bookings/approve-subuser', bookingController.approveSubUserBooking);
+
 
 router.get('/bookings/:id', bookingController.getBookingById);
-// Route to get bookings by multiple IDs
 // Route to fetch bookings by multiple IDs
 router.get('/bookings', bookingController.getBookingsByIds);
 router.put('/booking/:id', bookingController.editBooking);
