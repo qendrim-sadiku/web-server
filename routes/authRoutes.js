@@ -46,7 +46,7 @@ router.post('/auth/resend-code', authController.resendVerificationCode);
 //       // Base64 encode the user details
 //       const userBase64 = Buffer.from(JSON.stringify(user)).toString('base64');
 
-//       const frontendUrl = 'http://localhost:4200';
+//       const frontendUrl = 'https://aroit.com';
 //       res.redirect(`${frontendUrl}/welcome?token=${token}&user=${userBase64}`);
 //     } catch (err) {
 //       console.error('Error during Google callback:', err.message);
@@ -94,7 +94,7 @@ router.post('/auth/resend-code', authController.resendVerificationCode);
 //       const userBase64 = Buffer.from(JSON.stringify(user)).toString('base64');
 
 //       // Redirect to frontend with token and user data
-//       const frontendUrl = 'http://localhost:4200'; // Replace with your frontend base URL
+//       const frontendUrl = 'https://aroit.com'; // Replace with your frontend base URL
 //       res.redirect(`${frontendUrl}/welcome?token=${token}&user=${userBase64}`);
 //     } catch (err) {
 //       console.error('Error during Facebook callback:', err.message);
@@ -119,7 +119,7 @@ router.get('/auth/google/callback', (req, res, next) => {
   passport.authenticate('google', (err, user, info) => {
     if (err) return next(err);
     if (!user) {
-      const frontendUrl = 'http://localhost:4200';
+      const frontendUrl = 'https://aroit.com';
       res.redirect(`${frontendUrl}/login?error=${encodeURIComponent(info.message)}`);
     } else {
       const token = jwt.sign(
@@ -136,7 +136,7 @@ router.get('/auth/google/callback', (req, res, next) => {
       };
 
       const userBase64 = Buffer.from(JSON.stringify(userData)).toString('base64');
-      const frontendUrl = 'http://localhost:4200';
+      const frontendUrl = 'https://aroit.com';
       res.redirect(`${frontendUrl}/welcome?token=${token}&user=${userBase64}`);
     }
   })(req, res, next);
@@ -158,7 +158,7 @@ router.get('/auth/facebook/callback', (req, res, next) => {
   passport.authenticate('facebook', (err, user, info) => {
     if (err) return next(err);
     if (!user) {
-      const frontendUrl = 'https://localhost:4200';
+      const frontendUrl = 'https://aroit.com';
       res.redirect(`${frontendUrl}/login?error=${encodeURIComponent(info.message)}`);
     } else {
       const token = jwt.sign(
@@ -175,7 +175,7 @@ router.get('/auth/facebook/callback', (req, res, next) => {
       };
 
       const userBase64 = Buffer.from(JSON.stringify(userData)).toString('base64');
-      const frontendUrl = 'http://localhost:4200';
+      const frontendUrl = 'https://aroit.com';
       res.redirect(`${frontendUrl}/welcome?token=${token}&user=${userBase64}`);
     }
   })(req, res, next);

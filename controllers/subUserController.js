@@ -84,95 +84,6 @@ exports.acceptInvitation = async (req, res) => {
 
 
 
-/**
- * Invite a new sub-user (with birthDate).
- */
-// exports.inviteSubUser = async (req, res) => {
-//   try {
-//     const { parentUserId, email, firstName, lastName, phoneNumber, birthDate } = req.body;
-
-//     if (!parentUserId || !email || !phoneNumber || !birthDate) {
-//       return res.status(400).json({
-//         message: 'All fields including birthDate are required',
-//       });
-//     }
-
-//     const parentUser = await User.findByPk(parentUserId);
-//     if (!parentUser) {
-//       return res.status(404).json({ message: 'Parent user not found' });
-//     }
-
-//     if (email === parentUser.email) {
-//       return res
-//         .status(400)
-//         .json({ message: 'Cannot send an invitation to yourself.' });
-//     }
-
-//     const existingUser = await User.findOne({ where: { email } });
-//     if (existingUser) {
-//       return res.status(400).json({ message: 'User already exists.' });
-//     }
-
-//     const token = uuidv4();
-//     const expiresAt = new Date(Date.now() + 48 * 60 * 60 * 1000);
-//     const inviteLink = `http://localhost:4200/accept-invite?token=${token}`;
-
-//     await Invitation.create({
-//       token,
-//       parentUserId,
-//       email,
-//       name: `${firstName} ${lastName}`.trim(),
-//       phoneNumber,
-//       birthDate,
-//       expiresAt,
-//       used: false,
-//     });
-
-//     // Generate the HTML email
-//     const emailBody = generateEmailTemplate(
-//       firstName,
-//       parentUser.name,
-//       parentUser.email,
-//       inviteLink,
-//       expiresAt
-//     );
-
-//     // Send the email
-//     await sendEmail(email, 'You’re Invited to Join Aroit!', emailBody);
-
-//     // -----------------------------------------
-//     //          ADDING TWILIO SMS BACK:
-//     // -----------------------------------------
-//     const smsBody = `
-//       Hello ${firstName},
-//       You have been invited to join Aroit by ${parentUser.name} (${parentUser.email}).
-//       Please accept via: ${inviteLink}
-//       (Expires: ${expiresAt.toLocaleString()})
-//     `;
-//     try {
-//       await twilioClient.messages.create({
-//         body: smsBody,
-//         from: process.env.TWILIO_PHONE_NUMBER,
-//         to: phoneNumber,
-//       });
-//       console.log(`SMS sent successfully to ${phoneNumber}`);
-//     } catch (smsError) {
-//       console.error('Error sending SMS:', smsError);
-//     }
-//     // -----------------------------------------
-
-//     return res.status(200).json({
-//       message: 'Invitation sent successfully',
-//       token,
-//       expiresAt,
-//     });
-//   } catch (error) {
-//     console.error('Error inviting sub-user:', error);
-//     return res.status(500).json({ message: 'Internal server error' });
-//   }
-// };
-
-
 exports.inviteSubUser = async (req, res) => {
   try {
     const { parentUserId, email, firstName, lastName, phoneNumber, countryCode, birthDate } = req.body;
@@ -199,7 +110,7 @@ exports.inviteSubUser = async (req, res) => {
 
     const token = uuidv4();
     const expiresAt = new Date(Date.now() + 48 * 60 * 60 * 1000);
-    const inviteLink = `http://localhost:4200/accept-invite?token=${token}`;
+    const inviteLink = `https://aroit.com/accept-invite?token=${token}`;
 
     // ✅ Store the invitation
     const invitation = await Invitation.create({
@@ -450,56 +361,6 @@ exports.cancelInvitation = async (req, res) => {
   }
 };
 
-/**
- * Get details of a specific sub-user, including birthDate.
- */
-// exports.getSubUserDetails = async (req, res) => {
-//   try {
-//     const { subUserId } = req.params;
-
-//     const subUser = await User.findByPk(subUserId, {
-//       attributes: ['id', 'name', 'surname', 'email', 'createdAt', 'parentUserId'],
-//     });
-//     if (!subUser) {
-//       return res.status(404).json({ message: 'Sub-user not found' });
-//     }
-
-//     let parentUser = null;
-//     let birthDate = null;
-
-//     if (subUser.parentUserId) {
-//       parentUser = await User.findByPk(subUser.parentUserId, {
-//         attributes: ['id', 'email', 'name'],
-//       });
-//     }
-
-//     const userDetails = await UserDetails.findOne({
-//       where: { UserId: subUser.id },
-//     });
-//     if (userDetails) {
-//       birthDate = userDetails.birthDate;
-//     }
-
-//     return res.status(200).json({
-//       id: subUser.id,
-//       name: subUser.name,
-//       surname: subUser.surname,
-//       email: subUser.email,
-//       createdAt: subUser.createdAt,
-//       birthDate,
-//       parentUser: parentUser
-//         ? {
-//             id: parentUser.id,
-//             email: parentUser.email,
-//             name: parentUser.name,
-//           }
-//         : null,
-//     });
-//   } catch (error) {
-//     console.error('Error fetching sub-user details:', error);
-//     return res.status(500).json({ message: 'Internal server error' });
-//   }
-// };
 
 exports.getSubUserDetails = async (req, res) => {
   try {
@@ -779,7 +640,7 @@ exports.resendInvite = async (req, res) => {
 
     const newToken = uuidv4();
     const newExpiresAt = new Date(Date.now() + 48 * 60 * 60 * 1000);
-    const inviteLink = `http://localhost:4200/accept-invite?token=${newToken}`;
+    const inviteLink = `https://aroit.com/accept-invite?token=${newToken}`;
 
     invitation.token = newToken;
     invitation.expiresAt = newExpiresAt;
