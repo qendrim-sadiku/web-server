@@ -73,6 +73,7 @@ exports.getServicesByCategory = async (req, res) => {
   }
 };
 
+
 exports.getAllServicesByCategory = async (req, res) => {
   try {
     const { categoryId } = req.params;
@@ -85,26 +86,44 @@ exports.getAllServicesByCategory = async (req, res) => {
       yearsOfExperience,
       type,
       ageGroup,
+      page = 1,
+      limit = 10,
     } = req.query;
 
     // Fetch the main category details
     const category = await Category.findByPk(categoryId);
-
     if (!category) {
       return res.status(404).json({ error: 'Category not found' });
     }
 
-    // Build the query object for services
+    // Build the query for filtering services
     const serviceQuery = {};
     if (level) serviceQuery.level = level;
     if (type) serviceQuery.type = type;
+
     if (search) {
+      // First, find subcategories whose name matches the search term
+      const matchingSubCategories = await SubCategory.findAll({
+        where: {
+          categoryId,
+          name: { [Op.like]: `%${search}%` },
+        },
+        attributes: ['id'],
+      });
+      const matchingSubCategoryIds = matchingSubCategories.map(sc => sc.id);
+
+      // Build an OR condition: service name, description or belongs to matching subcategory
       serviceQuery[Op.or] = [
         { name: { [Op.like]: `%${search}%` } },
         { description: { [Op.like]: `%${search}%` } },
       ];
+      if (matchingSubCategoryIds.length > 0) {
+        // Adjust the field name based on your model definition!
+        serviceQuery[Op.or].push({ SubCategoryId: { [Op.in]: matchingSubCategoryIds } });
+      }
     }
 
+    // Build trainer filtering criteria
     const trainerQuery = {};
     if (trainerId) trainerQuery['$Trainers.id$'] = trainerId;
     if (gender) trainerQuery.gender = gender;
@@ -116,12 +135,21 @@ exports.getAllServicesByCategory = async (req, res) => {
     }
     if (ageGroup) trainerQuery.ageGroup = ageGroup;
 
-    // Fetch subcategories and all their services
+    // Optional extra filtering by subcategory name
+    const subCategoryCondition = { categoryId };
+    if (subCategoryName) {
+      subCategoryCondition.name = { [Op.like]: `%${subCategoryName}%` };
+    }
+
+    // Set up pagination
+    const offset = (page - 1) * limit;
+
     const subCategories = await SubCategory.findAll({
-      where: { categoryId },
+      where: subCategoryCondition,
       include: {
         model: Service,
         where: serviceQuery,
+        required: false, // set to false if you want to include subcategories with no matching services
         include: [
           {
             model: Trainer,
@@ -142,10 +170,11 @@ exports.getAllServicesByCategory = async (req, res) => {
             ],
           },
         ],
+        offset: parseInt(offset),
+        limit: parseInt(limit),
       },
     });
 
-    // Prepare the result structure
     const result = {
       categoryName: category.name,
       subCategories: subCategories.map((subCategory) => ({
@@ -178,7 +207,6 @@ exports.getAllServicesByCategory = async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 };
-
 
 exports.getSubcategoryByCategory = async (req, res) => {
   try {
@@ -460,6 +488,9 @@ exports.getTrainersForService = async (req, res) => {
 //   }
 // };
 
+
+
+
 exports.getAllServices = async (req, res) => {
   try {
     const {
@@ -476,71 +507,87 @@ exports.getAllServices = async (req, res) => {
     // Ensure page and limit are integers
     const parsedPage = parseInt(page, 10);
     const parsedLimit = parseInt(limit, 10);
-
-    // Calculate offset for pagination
     const offset = (parsedPage - 1) * parsedLimit;
 
-    // Build the service query object
-    const serviceQuery = {};
-    if (type) {
-      serviceQuery.type = type; // Filter by service type
-    }
-    if (level) {
-      serviceQuery.level = level; // Filter by level
-    }
+    // **Find SubCategory IDs based on search query**
+    let matchingSubCategoryIds = [];
+    let matchingCategoryIds = [];
+
     if (searchQuery) {
-      serviceQuery[Op.or] = [
-        { name: { [Op.like]: `%${searchQuery}%` } }, // Search by name
-        { description: { [Op.like]: `%${searchQuery}%` } }, // Search by description
-      ];
+      // Find SubCategories matching searchQuery
+      const subCategories = await SubCategory.findAll({
+        where: {
+          name: { [Op.like]: `%${searchQuery}%` },
+        },
+        attributes: ['id'],
+      });
+
+      matchingSubCategoryIds = subCategories.map((sub) => sub.id);
+
+      // Find Categories matching searchQuery
+      const categories = await Category.findAll({
+        where: {
+          name: { [Op.like]: `%${searchQuery}%` },
+        },
+        include: [{ model: SubCategory, attributes: ['id'] }], // Get SubCategories
+      });
+
+      // Collect all related SubCategory IDs from matched Categories
+      const subCategoryIdsFromCategories = categories.flatMap((cat) =>
+        cat.SubCategories ? cat.SubCategories.map((sub) => sub.id) : []
+      );
+
+      // Merge all matching SubCategory IDs
+      matchingSubCategoryIds = [...new Set([...matchingSubCategoryIds, ...subCategoryIdsFromCategories])];
     }
 
-    // Build the trainer query object
-    const trainerQuery = {};
-    if (gender) {
-      trainerQuery.gender = gender.trim(); // Filter by gender
+    // **Build the service query**
+    const serviceQuery = {};
+    if (type) serviceQuery.type = type;
+    if (level) serviceQuery.level = level;
+    if (matchingSubCategoryIds.length > 0) {
+      serviceQuery.subCategoryId = { [Op.in]: matchingSubCategoryIds };
     }
+
+    // **Build the trainer query**
+    const trainerQuery = {};
+    if (gender) trainerQuery.gender = gender.trim();
     if (yearsOfExperience) {
       const experienceRange = yearsOfExperience.split('-');
-      const minExperience = parseInt(experienceRange[0], 10);
-      const maxExperience = parseInt(experienceRange[1], 10);
-      trainerQuery.yearsOfExperience = {
-        [Op.between]: [minExperience, maxExperience], // Filter by years of experience range
-      };
+      trainerQuery.yearsOfExperience = { [Op.between]: [parseInt(experienceRange[0], 10), parseInt(experienceRange[1], 10)] };
     }
-    if (ageGroup) {
-      trainerQuery.ageGroup = ageGroup; // Apply age group filter
-    }
+    if (ageGroup) trainerQuery.ageGroup = ageGroup;
 
-    // Fetch services with filters, pagination, and trainer inclusion
+    // **Fetch services with filters, pagination, and trainer inclusion**
     const { count, rows } = await Service.findAndCountAll({
       where: serviceQuery, // Apply service filters
-      attributes: [
-        'id',
-        'name',
-        'description',
-        'image',
-        'duration',
-        'hourlyRate',
-        'level',
-        'type',
-      ],
+      attributes: ['id', 'name', 'description', 'image', 'duration', 'hourlyRate', 'level', 'type'],
       include: [
         {
           model: Trainer,
           where: Object.keys(trainerQuery).length > 0 ? trainerQuery : undefined,
           attributes: ['id', 'name', 'gender', 'yearsOfExperience', 'ageGroup'],
         },
+        {
+          model: SubCategory,
+          attributes: ['id', 'name'],
+          include: [
+            {
+              model: Category,
+              attributes: ['id', 'name'],
+            },
+          ],
+        },
       ],
-      limit: parsedLimit, // Apply limit
-      offset: offset, // Apply offset
-      distinct: true, // Ensure accurate unique count
+      limit: parsedLimit,
+      offset: offset,
+      distinct: true,
     });
 
-    // Calculate total pages
+    // **Calculate total pages**
     const totalPages = Math.ceil(count / parsedLimit);
 
-    // Return response
+    // **Return response**
     res.status(200).json({
       totalItems: count,
       totalPages: totalPages,
@@ -554,6 +601,8 @@ exports.getAllServices = async (req, res) => {
         hourlyRate: service.hourlyRate,
         level: service.level,
         type: service.type,
+        subCategory: service.SubCategory ? service.SubCategory.name : null,
+        category: service.SubCategory && service.SubCategory.Category ? service.SubCategory.Category.name : null,
         trainers: service.Trainers.map((trainer) => ({
           id: trainer.id,
           name: trainer.name,
@@ -568,6 +617,116 @@ exports.getAllServices = async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 };
+
+
+// exports.getAllServices = async (req, res) => {
+//   try {
+//     const {
+//       searchQuery = '', // Search query
+//       page = 1, // Current page (default to 1)
+//       limit = 10, // Limit per page (default to 10)
+//       gender, // Gender filter
+//       yearsOfExperience, // Experience range filter
+//       type, // Service type filter
+//       level, // Level filter
+//       ageGroup, // Age group filter
+//     } = req.query;
+
+//     // Ensure page and limit are integers
+//     const parsedPage = parseInt(page, 10);
+//     const parsedLimit = parseInt(limit, 10);
+
+//     // Calculate offset for pagination
+//     const offset = (parsedPage - 1) * parsedLimit;
+
+//     // Build the service query object
+//     const serviceQuery = {};
+//     if (type) {
+//       serviceQuery.type = type; // Filter by service type
+//     }
+//     if (level) {
+//       serviceQuery.level = level; // Filter by level
+//     }
+//     if (searchQuery) {
+//       serviceQuery[Op.or] = [
+//         { name: { [Op.like]: `%${searchQuery}%` } }, // Search by name
+//         { description: { [Op.like]: `%${searchQuery}%` } }, // Search by description
+//       ];
+//     }
+
+//     // Build the trainer query object
+//     const trainerQuery = {};
+//     if (gender) {
+//       trainerQuery.gender = gender.trim(); // Filter by gender
+//     }
+//     if (yearsOfExperience) {
+//       const experienceRange = yearsOfExperience.split('-');
+//       const minExperience = parseInt(experienceRange[0], 10);
+//       const maxExperience = parseInt(experienceRange[1], 10);
+//       trainerQuery.yearsOfExperience = {
+//         [Op.between]: [minExperience, maxExperience], // Filter by years of experience range
+//       };
+//     }
+//     if (ageGroup) {
+//       trainerQuery.ageGroup = ageGroup; // Apply age group filter
+//     }
+
+//     // Fetch services with filters, pagination, and trainer inclusion
+//     const { count, rows } = await Service.findAndCountAll({
+//       where: serviceQuery, // Apply service filters
+//       attributes: [
+//         'id',
+//         'name',
+//         'description',
+//         'image',
+//         'duration',
+//         'hourlyRate',
+//         'level',
+//         'type',
+//       ],
+//       include: [
+//         {
+//           model: Trainer,
+//           where: Object.keys(trainerQuery).length > 0 ? trainerQuery : undefined,
+//           attributes: ['id', 'name', 'gender', 'yearsOfExperience', 'ageGroup'],
+//         },
+//       ],
+//       limit: parsedLimit, // Apply limit
+//       offset: offset, // Apply offset
+//       distinct: true, // Ensure accurate unique count
+//     });
+
+//     // Calculate total pages
+//     const totalPages = Math.ceil(count / parsedLimit);
+
+//     // Return response
+//     res.status(200).json({
+//       totalItems: count,
+//       totalPages: totalPages,
+//       currentPage: parsedPage,
+//       data: rows.map((service) => ({
+//         id: service.id,
+//         name: service.name,
+//         description: service.description,
+//         image: service.image,
+//         duration: service.duration,
+//         hourlyRate: service.hourlyRate,
+//         level: service.level,
+//         type: service.type,
+//         trainers: service.Trainers.map((trainer) => ({
+//           id: trainer.id,
+//           name: trainer.name,
+//           gender: trainer.gender,
+//           yearsOfExperience: trainer.yearsOfExperience,
+//           ageGroup: trainer.ageGroup,
+//         })),
+//       })),
+//     });
+//   } catch (error) {
+//     console.error('Error fetching services:', error.message);
+//     res.status(500).json({ error: error.message });
+//   }
+// };
 
 
 
