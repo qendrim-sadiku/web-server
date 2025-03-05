@@ -545,9 +545,15 @@ exports.getAllServices = async (req, res) => {
     const serviceQuery = {};
     if (type) serviceQuery.type = type;
     if (level) serviceQuery.level = level;
-    if (matchingSubCategoryIds.length > 0) {
-      serviceQuery.subCategoryId = { [Op.in]: matchingSubCategoryIds };
+    if (searchQuery) {
+      if (matchingSubCategoryIds.length > 0) {
+        serviceQuery.subCategoryId = { [Op.in]: matchingSubCategoryIds };
+      } else {
+        // If no subcategories match the search, force no results
+        return res.status(200).json({ totalItems: 0, totalPages: 0, currentPage: parsedPage, data: [] });
+      }
     }
+    
 
     // **Build the trainer query**
     const trainerQuery = {};

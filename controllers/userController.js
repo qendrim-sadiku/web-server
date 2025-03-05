@@ -6,6 +6,8 @@ const multer = require('multer');
 const sendEmail = require('../config/emailService');
 
 const path = require('path');
+const { Op } = require('sequelize'); // Import Op from Sequelize
+const { Sequelize } = require('sequelize');
 
 const UserContactDetails = require('../models/UserProfile/UserContactDetails');
 const Address = require('../models/UserProfile/Address');
@@ -1742,40 +1744,62 @@ exports.addBrowsingHistory = async (req, res) => {
   const { userId, serviceId } = req.body;
 
   try {
-    if (!userId || !serviceId) {
-      return res.status(400).json({ message: 'User ID and Service ID are required' });
-    }
-
-    const service = await Service.findByPk(serviceId);
-    if (!service) {
-      return res.status(404).json({ message: 'Service not found' });
-    }
-
-    const browsingHistoryEntry = await BrowsingHistory.create({
-      userId,
-      serviceId,
-      viewedAt: new Date()
+    // Check if the service already exists in the browsing history
+    const existingEntry = await BrowsingHistory.findOne({
+      where: { userId, serviceId }
     });
+
+    if (existingEntry) {
+      // Update the viewedAt timestamp instead of adding a duplicate entry
+      await existingEntry.update({ viewedAt: new Date() });
+
+      return res.status(200).json({
+        message: 'Browsing history updated',
+        data: existingEntry
+      });
+    }
+
+    // If not found, create a new browsing history entry
+    const newEntry = await BrowsingHistory.create({ userId, serviceId, viewedAt: new Date() });
 
     res.status(201).json({
-      message: 'Browsing history entry created successfully',
-      data: browsingHistoryEntry
+      message: 'Added to browsing history',
+      data: newEntry
     });
   } catch (error) {
-    console.error('Error adding browsing history:', error);
-    res.status(500).json({ message: 'Failed to add browsing history', error });
+    console.error('Error adding to browsing history:', error);
+    res.status(500).json({ message: 'Failed to add to browsing history', error });
   }
 };
 
-// Get browsing history for a user
+// Get browsing history for a user with search functionality (without duplicates)
 exports.getBrowsingHistory = async (req, res) => {
   const userId = req.params.userId;
+  const searchQuery = req.query.search || '';
 
   try {
     const history = await BrowsingHistory.findAll({
       where: { userId },
-      include: [{ model: Service, attributes: ['id', 'name', 'description', 'image'] }],
-      order: [['viewedAt', 'DESC']]
+      attributes: [
+        'serviceId',
+        [Sequelize.fn('MAX', Sequelize.col('viewedAt')), 'latestViewedAt']
+      ],
+      group: ['serviceId'],
+      include: [
+        {
+          model: Service,
+          attributes: ['id', 'name', 'description', 'image'],
+          where: searchQuery
+            ? {
+                [Op.or]: [
+                  { name: { [Op.like]: `%${searchQuery}%` } },
+                  { description: { [Op.like]: `%${searchQuery}%` } }
+                ]
+              }
+            : undefined
+        }
+      ],
+      order: [[Sequelize.fn('MAX', Sequelize.col('viewedAt')), 'DESC']]
     });
 
     res.status(200).json({
