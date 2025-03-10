@@ -119,6 +119,7 @@ const userInterestRoutes = require('./routes/userInterestRouter');
 const groupSessionsRouter = require('./routes/groupSessions');
 const recentSearchRoutes = require('./routes/recentSearchRoutes');
 const subUserRoutes = require('./routes/subUserRoutes');
+const googlePlacesRoutes = require('./routes/googlePlacesRoutes');
 
 
 // Initialize Express app
@@ -209,6 +210,9 @@ app.use('/api/', recentSearchRoutes ); // User interest routes
 app.use('/api', subUserRoutes);
 
 app.use('/api/group-sessions', groupSessionsRouter);
+app.use('/api/google', googlePlacesRoutes);
+
+
 
 // Serve static files
 app.use('/uploads', express.static(uploadDir));
