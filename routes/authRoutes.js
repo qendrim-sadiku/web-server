@@ -6,8 +6,8 @@ const authController = require('../controllers/authController');
 const passport = require('../config/passport');
 
 
-router.post('/signup', authController.signup);
-router.post('/login', authController.login);
+// router.post('/signup', authController.signup);
+// router.post('/login', authController.login);
 router.post('/change-password/:userId', authController.changePassword);
 
 router.post('/auth/signup', authController.signup);

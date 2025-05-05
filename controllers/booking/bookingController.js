@@ -1013,13 +1013,11 @@ exports.getPaginatedFilteredBookingsOfUser = async (req, res) => {
 };
 
 
-
-
 exports.getAllBookingsOfUser = async (req, res) => {
   try {
     const { userId } = req.params;
 
-    // Fetch all bookings for the user
+    // Fetch all bookings for the user without pagination
     const bookings = await Booking.findAll({
       where: { userId },
       include: [

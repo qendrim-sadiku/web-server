@@ -1,6 +1,6 @@
 const RecentSearch = require('../models/RecentSearch ');
 
-// Add a new recent search
+// Add a new recent search (with max 5 searches per user)
 exports.addRecentSearch = async (req, res) => {
   const { userId, query } = req.body;
 
@@ -9,6 +9,18 @@ exports.addRecentSearch = async (req, res) => {
       return res.status(400).json({ message: 'User ID and search query are required' });
     }
 
+    // Get the existing searches for the user
+    const existingSearches = await RecentSearch.findAll({
+      where: { userId },
+      order: [['createdAt', 'DESC']],
+    });
+
+    if (existingSearches.length >= 10) {
+      // If there are already 5 searches, remove the oldest one (first entry in ASC order)
+      await existingSearches[existingSearches.length - 1].destroy();
+    }
+
+    // Add the new search
     await RecentSearch.create({ userId, query });
 
     res.status(201).json({ message: 'Search added successfully' });

@@ -699,32 +699,44 @@ exports.getUserDetails = async (req, res) => {
 
 
 exports.updateUserDetails = async (req, res) => {
-  const { userId, name, email, origin, countryCode, phoneNumber } = req.body;
+  const { userId, userDetails } = req.body;
+
+  if (!userId || !userDetails) {
+    return res.status(400).send({ message: 'User ID and userDetails are required' });
+  }
 
   try {
-    if (!userId) {
-      return res.status(400).send({ message: 'User ID is required' });
-    }
-
     // Find the user
     const user = await User.findByPk(userId);
     if (!user) {
       return res.status(404).send({ message: 'User not found' });
     }
 
-    // Update the user data in the User model
-    await user.update({
-      name,
-      email,
-      origin
-    });
+    // Update User
+    const { name, email, origin } = userDetails;
+    const updateFields = {};
+    if (name !== undefined) updateFields.name = name;
+    if (email !== undefined) updateFields.email = email;
+    if (origin !== undefined) updateFields.origin = origin;
 
-    // Update or insert the user contact details
-    await UserContactDetails.upsert({
-      countryCode,
-      phoneNumber,
-      UserId: userId // Explicitly set the UserId foreign key
-    });
+    await user.update(updateFields);
+
+    // Update UserContactDetails
+    let userContact = await UserContactDetails.findOne({ where: { UserId: userId } });
+
+    const { countryCode, phoneNumber } = userDetails;
+    const contactUpdateFields = {};
+    if (countryCode !== undefined) contactUpdateFields.countryCode = countryCode;
+    if (phoneNumber !== undefined) contactUpdateFields.phoneNumber = phoneNumber;
+
+    if (userContact) {
+      await userContact.update(contactUpdateFields);
+    } else if (countryCode || phoneNumber) {
+      await UserContactDetails.create({
+        UserId: userId,
+        ...contactUpdateFields
+      });
+    }
 
     res.status(200).send({ message: 'User details updated successfully' });
   } catch (error) {
@@ -765,43 +777,70 @@ exports.getUserPaymentInfo = async (req, res) => {
   }
 };
 
-// Add new payment info (multiple cards allowed)
 exports.updatePaymentInfo = async (req, res) => {
-  const { userId, cardNumber, cardHolderName, cvv, expirationDate, country, zipCode } = req.body;
+  const {
+    userId,
+    cardId, // this is optional: present only during edit
+    cardNumber,
+    cardHolderName,
+    cvv,
+    expirationDate,
+    country,
+    zipCode
+  } = req.body;
 
   try {
-    // Check if the userId exists in the request
     if (!userId) {
       return res.status(400).send({ message: 'User ID is required' });
     }
 
-    // Fetch the user using the userId
-    let user = await User.findByPk(userId);
+    const user = await User.findByPk(userId);
     if (!user) {
       return res.status(404).send({ message: 'User not found' });
     }
 
-    // Ensure all payment info fields are present
+    // Common validation
     if (!cardNumber || !cardHolderName || !cvv || !expirationDate) {
       return res.status(400).send({ message: 'All payment info fields are required' });
     }
 
-    // Create a new payment info entry for the user (using the association)
-    await PaymentInfo.create({
-      cardNumber,
-      cardHolderName,
-      cvv,
-      expirationDate,
-      country, // Optional field
-      zipCode, // Optional field
-      UserId: user.id // Associate the payment info with the user
-    });
+    if (cardId) {
+      // Edit mode
+      const existingCard = await PaymentInfo.findOne({
+        where: { id: cardId, UserId: userId }
+      });
 
-    // Return a success message
-    res.status(200).send({ message: 'Payment info added successfully' });
+      if (!existingCard) {
+        return res.status(404).send({ message: 'Card not found for this user' });
+      }
+
+      await existingCard.update({
+        cardNumber,
+        cardHolderName,
+        cvv,
+        expirationDate,
+        country,
+        zipCode
+      });
+
+      return res.status(200).send({ message: 'Payment info updated successfully', id: existingCard.id });
+    } else {
+      // Add new card
+      const newCard = await PaymentInfo.create({
+        cardNumber,
+        cardHolderName,
+        cvv,
+        expirationDate,
+        country,
+        zipCode,
+        UserId: user.id
+      });
+
+      return res.status(200).send({ message: 'Payment info added successfully', id: newCard.id });
+    }
   } catch (error) {
-    console.error('Error adding payment info:', error);
-    res.status(500).send({ message: 'Error adding payment info', error: error.message || error });
+    console.error('Error handling payment info:', error);
+    return res.status(500).send({ message: 'Server error', error: error.message || error });
   }
 };
 

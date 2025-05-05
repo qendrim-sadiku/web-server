@@ -156,6 +156,11 @@ const User = sequelize.define('User', {
     type: DataTypes.ENUM('user', 'admin', 'trainer'),
     defaultValue: 'user', // Default to 'user'
   },
+  isServiceProvider: {
+    type: DataTypes.BOOLEAN,
+    allowNull: false,
+    defaultValue: false,
+  },
   isProfileCompleted: {
     type: DataTypes.BOOLEAN,
     defaultValue: false, // By default, profile is not completed

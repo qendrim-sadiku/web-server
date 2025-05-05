@@ -5,17 +5,47 @@ const BookingDate = require('../../models/Bookings/BookingDate');
 const User = require('../../models/User'); // Import the User model
 
 // Create a new trainer
+// exports.createTrainer = async (req, res) => {
+//   try {
+//     const trainer = await Trainer.create({
+//       ...req.body,
+//       ageGroup: req.body.ageGroup // Ensure ageGroup is included
+//     });
+//     res.status(201).json(trainer);
+//   } catch (error) {
+//     res.status(500).json({ error: error.message });
+//   }
+// };
+
 exports.createTrainer = async (req, res) => {
   try {
+    const { userId, type, backgroundCheck, ...trainerData } = req.body;
+
+    if (type === 'Individual' && !backgroundCheck) {
+      return res.status(400).json({ message: 'Background check is required for Individual trainers.' });
+    }
+
+    if (userId) {
+      const user = await User.findByPk(userId);
+      if (user && !user.isServiceProvider) {
+        user.isServiceProvider = true;
+        await user.save();
+      }
+    }
+
     const trainer = await Trainer.create({
-      ...req.body,
-      ageGroup: req.body.ageGroup // Ensure ageGroup is included
+      ...trainerData,
+      type,
+      backgroundCheck: type === 'Individual' ? backgroundCheck : null,
+      userId: userId || null
     });
+
     res.status(201).json(trainer);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 };
+
 
 // Get all trainers by category with optional filtering by age group
 exports.getTrainersByCategory = async (req, res) => {

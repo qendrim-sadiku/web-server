@@ -85,9 +85,7 @@ exports.getAllServicesByCategory = async (req, res) => {
       gender,
       yearsOfExperience,
       type,
-      ageGroup,
-      page = 1,
-      limit = 10,
+      ageGroup
     } = req.query;
 
     // Fetch the main category details
@@ -102,24 +100,18 @@ exports.getAllServicesByCategory = async (req, res) => {
     if (type) serviceQuery.type = type;
 
     if (search) {
-      // First, find subcategories whose name matches the search term
       const matchingSubCategories = await SubCategory.findAll({
-        where: {
-          categoryId,
-          name: { [Op.like]: `%${search}%` },
-        },
+        where: { categoryId, name: { [Op.like]: `%${search}%` } },
         attributes: ['id'],
       });
       const matchingSubCategoryIds = matchingSubCategories.map(sc => sc.id);
 
-      // Build an OR condition: service name, description or belongs to matching subcategory
       serviceQuery[Op.or] = [
         { name: { [Op.like]: `%${search}%` } },
         { description: { [Op.like]: `%${search}%` } },
       ];
       if (matchingSubCategoryIds.length > 0) {
-        // Adjust the field name based on your model definition!
-        serviceQuery[Op.or].push({ SubCategoryId: { [Op.in]: matchingSubCategoryIds } });
+        serviceQuery[Op.or].push({ subCategoryId: { [Op.in]: matchingSubCategoryIds } });
       }
     }
 
@@ -135,21 +127,12 @@ exports.getAllServicesByCategory = async (req, res) => {
     }
     if (ageGroup) trainerQuery.ageGroup = ageGroup;
 
-    // Optional extra filtering by subcategory name
-    const subCategoryCondition = { categoryId };
-    if (subCategoryName) {
-      subCategoryCondition.name = { [Op.like]: `%${subCategoryName}%` };
-    }
-
-    // Set up pagination
-    const offset = (page - 1) * limit;
-
     const subCategories = await SubCategory.findAll({
-      where: subCategoryCondition,
+      where: { categoryId },
       include: {
         model: Service,
         where: serviceQuery,
-        required: false, // set to false if you want to include subcategories with no matching services
+        required: false,
         include: [
           {
             model: Trainer,
@@ -170,12 +153,10 @@ exports.getAllServicesByCategory = async (req, res) => {
             ],
           },
         ],
-        offset: parseInt(offset),
-        limit: parseInt(limit),
       },
     });
 
-    const result = {
+    res.status(200).json({
       categoryName: category.name,
       subCategories: subCategories.map((subCategory) => ({
         id: subCategory.id,
@@ -200,18 +181,17 @@ exports.getAllServicesByCategory = async (req, res) => {
           details: service.ServiceDetail,
         })),
       })),
-    };
-
-    res.status(200).json(result);
+    });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 };
 
+
 exports.getSubcategoryByCategory = async (req, res) => {
   try {
     const { categoryId, subCategoryId } = req.params;
-    const { gender, yearsOfExperience, type, search, level, ageGroup, page, limit } = req.query;
+    const { gender, yearsOfExperience, type, search, level, ageGroup } = req.query;
 
     // Fetch the main category
     const category = await Category.findByPk(categoryId);
@@ -227,56 +207,31 @@ exports.getSubcategoryByCategory = async (req, res) => {
       return res.status(404).json({ error: 'Subcategory not found' });
     }
 
-    // Pagination logic
-    const pageNumber = parseInt(page, 10) || 1; // Default to page 1
-    const pageSize = parseInt(limit, 10) || 10; // Default to 10 items per page
-    const offset = (pageNumber - 1) * pageSize;
-
     // Build the service query
     const serviceQuery = {};
-    if (type) {
-      serviceQuery.type = type; // Filter by service type (e.g., 'Online', 'Meeting-Point')
-    }
-    if (level) {
-      serviceQuery.level = level; // Filter by level
-    }
+    if (type) serviceQuery.type = type;
+    if (level) serviceQuery.level = level;
     if (search) {
       serviceQuery[Op.or] = [
-        { name: { [Op.like]: `%${search}%` } }, // Search by name
-        { description: { [Op.like]: `%${search}%` } }, // Search by description
+        { name: { [Op.like]: `%${search}%` } },
+        { description: { [Op.like]: `%${search}%` } },
       ];
     }
 
     // Build the trainer query
     const trainerQuery = {};
-    if (gender) {
-      trainerQuery.gender = gender.trim(); // Filter by gender
-    }
+    if (gender) trainerQuery.gender = gender.trim();
     if (yearsOfExperience) {
       const experienceRange = yearsOfExperience.split('-');
-      const minExperience = parseInt(experienceRange[0], 10);
-      const maxExperience = parseInt(experienceRange[1], 10);
       trainerQuery.yearsOfExperience = {
-        [Op.between]: [minExperience, maxExperience], // Filter by years of experience range
+        [Op.between]: [parseInt(experienceRange[0]), parseInt(experienceRange[1])],
       };
     }
-    if (ageGroup) {
-      trainerQuery.ageGroup = ageGroup; // Apply the age group filter
-    }
+    if (ageGroup) trainerQuery.ageGroup = ageGroup;
 
-    // Find the services under the subcategory and apply filters with pagination
-    const { count: totalServices, rows: services } = await Service.findAndCountAll({
+    const services = await Service.findAll({
       where: { subCategoryId: subCategoryId, ...serviceQuery },
-      attributes: [
-        'id',
-        'name',
-        'description',
-        'image',
-        'duration',
-        'hourlyRate',
-        'level',
-        'type',
-      ],
+      attributes: ['id', 'name', 'description', 'image', 'duration', 'hourlyRate', 'level', 'type'],
       include: [
         {
           model: ServiceDetails,
@@ -287,22 +242,18 @@ exports.getSubcategoryByCategory = async (req, res) => {
             'whatsNotIncluded',
             'recommendations',
             'coachInfo',
-            'serviceImage', // Include serviceImage
+            'serviceImage',
           ],
         },
         {
           model: Trainer,
           where: Object.keys(trainerQuery).length > 0 ? trainerQuery : undefined,
-          attributes: ['id', 'name', 'gender', 'yearsOfExperience', 'ageGroup'], // Include ageGroup in the attributes
+          attributes: ['id', 'name', 'gender', 'yearsOfExperience', 'ageGroup'],
         },
       ],
-      distinct: true, // Ensure the count is accurate for unique services
-      limit: pageSize,
-      offset: offset,
     });
 
-    // Prepare the result
-    const result = {
+    res.status(200).json({
       categoryName: category.name,
       subCategory: {
         id: subCategory.id,
@@ -326,19 +277,12 @@ exports.getSubcategoryByCategory = async (req, res) => {
           })),
         })),
       },
-      pagination: {
-        total: totalServices,
-        currentPage: pageNumber,
-        totalPages: Math.ceil(totalServices / pageSize),
-      },
-    };
-
-    res.status(200).json(result);
+    });
   } catch (error) {
-    console.error('Error fetching subcategory:', error.message);
     res.status(500).json({ error: error.message });
   }
 };
+
 
 
 // Get a single service by ID
@@ -494,135 +438,60 @@ exports.getTrainersForService = async (req, res) => {
 exports.getAllServices = async (req, res) => {
   try {
     const {
-      searchQuery = '', // Search query
-      page = 1, // Current page (default to 1)
-      limit = 10, // Limit per page (default to 10)
-      gender, // Gender filter
-      yearsOfExperience, // Experience range filter
-      type, // Service type filter
-      level, // Level filter
-      ageGroup, // Age group filter
+      searchQuery = '',
+      gender,
+      yearsOfExperience,
+      type,
+      level,
+      ageGroup,
     } = req.query;
 
-    // Ensure page and limit are integers
-    const parsedPage = parseInt(page, 10);
-    const parsedLimit = parseInt(limit, 10);
-    const offset = (parsedPage - 1) * parsedLimit;
+    // Build the service query
+    const serviceQuery = {};
 
-    // **Find SubCategory IDs based on search query**
-    let matchingSubCategoryIds = [];
-    let matchingCategoryIds = [];
-
-    if (searchQuery) {
-      // Find SubCategories matching searchQuery
-      const subCategories = await SubCategory.findAll({
-        where: {
-          name: { [Op.like]: `%${searchQuery}%` },
-        },
-        attributes: ['id'],
-      });
-
-      matchingSubCategoryIds = subCategories.map((sub) => sub.id);
-
-      // Find Categories matching searchQuery
-      const categories = await Category.findAll({
-        where: {
-          name: { [Op.like]: `%${searchQuery}%` },
-        },
-        include: [{ model: SubCategory, attributes: ['id'] }], // Get SubCategories
-      });
-
-      // Collect all related SubCategory IDs from matched Categories
-      const subCategoryIdsFromCategories = categories.flatMap((cat) =>
-        cat.SubCategories ? cat.SubCategories.map((sub) => sub.id) : []
-      );
-
-      // Merge all matching SubCategory IDs
-      matchingSubCategoryIds = [...new Set([...matchingSubCategoryIds, ...subCategoryIdsFromCategories])];
+    // Check if searchQuery exists and is not empty
+    if (searchQuery.trim() !== '') {
+      serviceQuery[Op.or] = [
+        { name: { [Op.like]: `%${searchQuery}%` } },
+        { description: { [Op.like]: `%${searchQuery}%` } },
+      ];
     }
 
-    // **Build the service query**
-    const serviceQuery = {};
+    // Check if filtering by type or level
     if (type) serviceQuery.type = type;
     if (level) serviceQuery.level = level;
-    if (searchQuery) {
-      if (matchingSubCategoryIds.length > 0) {
-        serviceQuery.subCategoryId = { [Op.in]: matchingSubCategoryIds };
-      } else {
-        // If no subcategories match the search, force no results
-        return res.status(200).json({ totalItems: 0, totalPages: 0, currentPage: parsedPage, data: [] });
-      }
-    }
-    
 
-    // **Build the trainer query**
+    // Build the trainer query
     const trainerQuery = {};
     if (gender) trainerQuery.gender = gender.trim();
     if (yearsOfExperience) {
       const experienceRange = yearsOfExperience.split('-');
-      trainerQuery.yearsOfExperience = { [Op.between]: [parseInt(experienceRange[0], 10), parseInt(experienceRange[1], 10)] };
+      trainerQuery.yearsOfExperience = {
+        [Op.between]: [parseInt(experienceRange[0]), parseInt(experienceRange[1])],
+      };
     }
     if (ageGroup) trainerQuery.ageGroup = ageGroup;
 
-    // **Fetch services with filters, pagination, and trainer inclusion**
-    const { count, rows } = await Service.findAndCountAll({
-      where: serviceQuery, // Apply service filters
-      attributes: ['id', 'name', 'description', 'image', 'duration', 'hourlyRate', 'level', 'type'],
+    // Fetch services with filters
+    const services = await Service.findAll({
+      where: serviceQuery,
       include: [
         {
           model: Trainer,
           where: Object.keys(trainerQuery).length > 0 ? trainerQuery : undefined,
           attributes: ['id', 'name', 'gender', 'yearsOfExperience', 'ageGroup'],
         },
-        {
-          model: SubCategory,
-          attributes: ['id', 'name'],
-          include: [
-            {
-              model: Category,
-              attributes: ['id', 'name'],
-            },
-          ],
-        },
       ],
-      limit: parsedLimit,
-      offset: offset,
-      distinct: true,
     });
 
-    // **Calculate total pages**
-    const totalPages = Math.ceil(count / parsedLimit);
-
-    // **Return response**
-    res.status(200).json({
-      totalItems: count,
-      totalPages: totalPages,
-      currentPage: parsedPage,
-      data: rows.map((service) => ({
-        id: service.id,
-        name: service.name,
-        description: service.description,
-        image: service.image,
-        duration: service.duration,
-        hourlyRate: service.hourlyRate,
-        level: service.level,
-        type: service.type,
-        subCategory: service.SubCategory ? service.SubCategory.name : null,
-        category: service.SubCategory && service.SubCategory.Category ? service.SubCategory.Category.name : null,
-        trainers: service.Trainers.map((trainer) => ({
-          id: trainer.id,
-          name: trainer.name,
-          gender: trainer.gender,
-          yearsOfExperience: trainer.yearsOfExperience,
-          ageGroup: trainer.ageGroup,
-        })),
-      })),
-    });
+    res.status(200).json(services);
   } catch (error) {
     console.error('Error fetching services:', error.message);
     res.status(500).json({ error: error.message });
   }
 };
+
+
 
 
 // exports.getAllServices = async (req, res) => {

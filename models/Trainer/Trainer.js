@@ -81,6 +81,14 @@ const Trainer = sequelize.define('Trainer', {
     type: DataTypes.STRING,
     allowNull: true
   },
+  type: {
+    type: DataTypes.ENUM('Individual', 'Business'),
+    allowNull: false
+  },
+  backgroundCheck: {
+    type: DataTypes.STRING,
+    allowNull: true // Validation will be handled manually
+  },
   ageGroup: {
     type: DataTypes.ENUM('Adults', 'Teenagers', 'Children'), // New age group field
     allowNull: false
