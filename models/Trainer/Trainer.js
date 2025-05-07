@@ -9,6 +9,10 @@ const Trainer = sequelize.define('Trainer', {
     autoIncrement: true,
     primaryKey: true
   },
+  userId: {
+    type: DataTypes.INTEGER,
+    allowNull: false
+  },
   name: {
     type: DataTypes.STRING,
     allowNull: false
@@ -87,19 +91,177 @@ const Trainer = sequelize.define('Trainer', {
   },
   backgroundCheck: {
     type: DataTypes.STRING,
-    allowNull: true // Validation will be handled manually
+    allowNull: true
   },
   ageGroup: {
-    type: DataTypes.ENUM('Adults', 'Teenagers', 'Children'), // New age group field
+    type: DataTypes.ENUM('Adults', 'Teenagers', 'Children'),
     allowNull: false
+  },
+
+  // ✅ New fields added:
+  ssn: {
+    type: DataTypes.STRING,
+    allowNull: true
+  },
+  typeOfServiceProvider: {
+    type: DataTypes.STRING,
+    allowNull: true
+  },
+  certificationStatus: {
+    type: DataTypes.STRING,
+    allowNull: true
+  },
+  providerCategory: {
+    type: DataTypes.STRING,
+    allowNull: true
+  },
+  availability: {
+    type: DataTypes.STRING,
+    allowNull: true
+  },
+  style: {
+    type: DataTypes.STRING,
+    allowNull: true
+  },
+  distance: {
+    type: DataTypes.STRING,
+    allowNull: true
+  },
+  serviceAvailability: {
+    type: DataTypes.TEXT,
+    allowNull: true,
+    get() {
+      const val = this.getDataValue('serviceAvailability');
+      return val ? JSON.parse(val) : [];
+    },
+    set(val) {
+      this.setDataValue('serviceAvailability', JSON.stringify(val));
+    }
+  },
+  location: {
+    type: DataTypes.TEXT,
+    allowNull: true,
+    get() {
+      const val = this.getDataValue('location');
+      return val ? JSON.parse(val) : [];
+    },
+    set(val) {
+      this.setDataValue('location', JSON.stringify(val));
+    }
+  },
+  settings: {
+    type: DataTypes.TEXT,
+    allowNull: true,
+    get() {
+      const val = this.getDataValue('settings');
+      return val ? JSON.parse(val) : [];
+    },
+    set(val) {
+      this.setDataValue('settings', JSON.stringify(val));
+    }
+  },
+  serviceFormat: {
+    type: DataTypes.TEXT,
+    allowNull: true,
+    get() {
+      const val = this.getDataValue('serviceFormat');
+      return val ? JSON.parse(val) : [];
+    },
+    set(val) {
+      this.setDataValue('serviceFormat', JSON.stringify(val));
+    }
+  },
+  groupRangeFrom: {
+    type: DataTypes.INTEGER,
+    allowNull: true
+  },
+  groupRangeTo: {
+    type: DataTypes.INTEGER,
+    allowNull: true
+  },
+  duration: {
+    type: DataTypes.STRING,
+    allowNull: true
+  },
+  customDurationHours: {
+    type: DataTypes.INTEGER,
+    allowNull: true
+  },
+  features: {
+    type: DataTypes.TEXT,
+    allowNull: true,
+    get() {
+      const val = this.getDataValue('features');
+      return val ? JSON.parse(val) : [];
+    },
+    set(val) {
+      this.setDataValue('features', JSON.stringify(val));
+    }
+  },
+  expertise: {
+    type: DataTypes.TEXT,
+    allowNull: true,
+    get() {
+      const val = this.getDataValue('expertise');
+      return val ? JSON.parse(val) : [];
+    },
+    set(val) {
+      this.setDataValue('expertise', JSON.stringify(val));
+    }
+  },
+  degree: {
+    type: DataTypes.STRING,
+    allowNull: true
+  },
+  fieldOfStudy: {
+    type: DataTypes.STRING,
+    allowNull: true
+  },
+  tennisCertification: {
+    type: DataTypes.STRING,
+    allowNull: true
+  },
+  basePrice: {
+    type: DataTypes.FLOAT,
+    allowNull: true
+  },
+  weekendPrice: {
+    type: DataTypes.FLOAT,
+    allowNull: true
+  },
+  additionalPersonPrice: {
+    type: DataTypes.FLOAT,
+    allowNull: true
+  },
+  discounts: {
+    type: DataTypes.JSON,
+    allowNull: true
+  },
+  advancedOrderDiscount: {
+    type: DataTypes.JSON,
+    allowNull: true
+  },
+  additionalFees: {
+    type: DataTypes.JSON,
+    allowNull: true
+  },  
+  languages: {
+    type: DataTypes.TEXT,
+    allowNull: true,
+    get() {
+      const val = this.getDataValue('languages');
+      return val ? JSON.parse(val) : [];
+    },
+    set(val) {
+      this.setDataValue('languages', JSON.stringify(val));
+    }
   }
+
 }, {
   timestamps: true
 });
 
-
 Category.hasMany(Trainer, { foreignKey: 'categoryId' });
 Trainer.belongsTo(Category, { foreignKey: 'categoryId' });
-
 
 module.exports = Trainer;

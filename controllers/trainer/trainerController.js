@@ -3,48 +3,9 @@ const Review = require('../../models/Trainer/Review'); // Assuming Review model 
 const Booking = require('../../models/Bookings/Booking'); // Assuming Booking model exists
 const BookingDate = require('../../models/Bookings/BookingDate');
 const User = require('../../models/User'); // Import the User model
+const { ServiceTrainer } = require('../../models/Services/Service');
 
-// Create a new trainer
-// exports.createTrainer = async (req, res) => {
-//   try {
-//     const trainer = await Trainer.create({
-//       ...req.body,
-//       ageGroup: req.body.ageGroup // Ensure ageGroup is included
-//     });
-//     res.status(201).json(trainer);
-//   } catch (error) {
-//     res.status(500).json({ error: error.message });
-//   }
-// };
 
-exports.createTrainer = async (req, res) => {
-  try {
-    const { userId, type, backgroundCheck, ...trainerData } = req.body;
-
-    if (type === 'Individual' && !backgroundCheck) {
-      return res.status(400).json({ message: 'Background check is required for Individual trainers.' });
-    }
-
-    if (userId) {
-      const user = await User.findByPk(userId);
-      if (user && !user.isServiceProvider) {
-        user.isServiceProvider = true;
-        await user.save();
-      }
-    }
-
-    const trainer = await Trainer.create({
-      ...trainerData,
-      type,
-      backgroundCheck: type === 'Individual' ? backgroundCheck : null,
-      userId: userId || null
-    });
-
-    res.status(201).json(trainer);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-};
 
 
 // Get all trainers by category with optional filtering by age group
@@ -541,5 +502,321 @@ exports.getMultipleTrainersAvailability = async (req, res) => {
     res.status(200).json(availability);
   } catch (error) {
     res.status(500).json({ error: error.message });
+  }
+};
+
+
+
+// exports.createTrainer = async (req, res) => {
+//   try {
+//     const {
+//       userId,
+//       type,
+//       backgroundCheck,
+//       name,
+//       surname,
+//       description,
+//       avatar,
+//       userRating,
+//       specialization,
+//       level,
+//       hourlyRate,
+//       categoryId,
+//       subcategoryId,
+//       gender,
+//       skills,
+//       yearsOfExperience,
+//       certification,
+//       ageGroup,
+//       ssn,
+//       typeOfServiceProvider,
+//       certificationStatus,
+//       providerCategory,
+//       availability,
+//       style,
+//       experience,
+//       distance,
+//       serviceAvailability,
+//       location,
+//       settings,
+//       serviceFormat,
+//       groupRange,
+//       duration,
+//       customDurationHours,
+//       features,
+//       expertise,
+//       equipment,
+//       trainingAids,
+//       protectiveGear,
+//       accessories,
+//       degree,
+//       fieldOfStudy,
+//       titles,
+//       tennisCertification,
+//       languages,
+//       serviceIds // <-- REQUIRED to assign this trainer to services
+//     } = req.body;
+
+//     // Create the trainer
+//     const newTrainer = await Trainer.create({
+//       userId,
+//       type,
+//       backgroundCheck,
+//       name,
+//       surname,
+//       description,
+//       avatar,
+//       userRating,
+//       specialization,
+//       level,
+//       hourlyRate,
+//       categoryId,
+//       subcategoryId,
+//       gender,
+//       skills,
+//       yearsOfExperience,
+//       certification,
+//       ageGroup,
+//       ssn,
+//       typeOfServiceProvider,
+//       certificationStatus,
+//       providerCategory,
+//       availability,
+//       style,
+//       experience,
+//       distance,
+//       serviceAvailability,
+//       location,
+//       settings,
+//       serviceFormat,
+//       groupRangeFrom: groupRange?.from || null,
+//       groupRangeTo: groupRange?.to || null,
+//       duration,
+//       customDurationHours,
+//       features,
+//       expertise,
+//       equipment,
+//       trainingAids,
+//       protectiveGear,
+//       accessories,
+//       degree,
+//       fieldOfStudy,
+//       titles,
+//       tennisCertification,
+//       languages
+//     });
+
+//     // Assign to services
+//     if (serviceIds && Array.isArray(serviceIds) && serviceIds.length > 0) {
+//       const serviceTrainerLinks = serviceIds.map(serviceId => ({
+//         serviceId,
+//         trainerId: newTrainer.id
+//       }));
+//       await ServiceTrainer.bulkCreate(serviceTrainerLinks);
+//     }
+
+//     res.status(201).json({
+//       message: 'Trainer created and assigned to services successfully',
+//       trainer: newTrainer
+//     });
+//   } catch (error) {
+//     console.error('Error creating trainer:', error);
+//     res.status(500).json({ error: 'Failed to create trainer' });
+//   }
+// };
+
+exports.createTrainer = async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    // 👤 Get full name and user
+    const user = await User.findByPk(userId);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found.' });
+    }
+
+    // ✅ Update user role to 'trainer'
+    await user.update({ role: 'trainer' });
+
+    const fullName = user.name || '';
+    const nameParts = fullName.trim().split(' ');
+    const name = nameParts[0] || 'Unknown';
+    const surname = nameParts.length > 1 ? nameParts.slice(1).join(' ') : 'Unknown';
+
+    const data = req.body;
+    const specifications = data.serviceProviderSpecifications || {};
+    const equipments = data.serviceProviderEquipments || {};
+    const prices = data.servicePrices || {};
+    const profileInfo = data.serviceProfileInformation || {};
+
+    const experienceMap = {
+      '0–2 years': 1,
+      '3–5 years': 4,
+      '6–10 years': 7,
+      '10+ years': 11
+    };
+    const yearsOfExperience = experienceMap[specifications.experience] || 0;
+
+    const existingTrainer = await Trainer.findOne({ where: { userId } });
+    if (existingTrainer) {
+      return res.status(400).json({ error: 'A trainer with this user already exists.' });
+    }
+
+    const trainer = await Trainer.create({
+      userId,
+      name,
+      surname,
+      type: data.type === 'individual' ? 'Individual' : 'Business',
+      backgroundCheck: '',
+      description: 'Professional trainer offering tailored services.',
+      avatar: '',
+      userRating: 0,
+      specialization: specifications.features?.[0] || 'General',
+      level: 'Pro',
+      hourlyRate: prices.basePrice || 0,
+      categoryId: data.selectedCategoryId,
+      subcategoryId: data.selectedSubcategoryIds?.[0],
+      gender: 'Male',
+      skills: [],
+      yearsOfExperience,
+      certification: specifications.certificationStatus || '',
+      ageGroup: specifications.ageGroup?.[0] || 'Adults',
+      ssn: data.individualData?.ssn || null,
+      typeOfServiceProvider: specifications.typeOfServiceProvider || '',
+      certificationStatus: specifications.certificationStatus || '',
+      providerCategory: specifications.providerCategory || '',
+      availability: specifications.availability || '',
+      style: specifications.style || '',
+      distance: specifications.distance || '',
+      serviceAvailability: specifications.serviceAvailability || [],
+      location: specifications.location || [],
+      settings: specifications.settings || [],
+      serviceFormat: specifications.serviceFormat || [],
+      groupRangeFrom: specifications.groupRange?.from || null,
+      groupRangeTo: specifications.groupRange?.to || null,
+      duration: specifications.duration || '',
+      customDurationHours: specifications.customDurationHours || null,
+      features: specifications.features || [],
+      expertise: specifications.expertise || [],
+      equipment: equipments.equipment || [],
+      trainingAids: equipments.trainingAids || [],
+      protectiveGear: equipments.protectiveGear || [],
+      accessories: equipments.accessories || [],
+      degree: profileInfo.degree || '',
+      fieldOfStudy: profileInfo.fieldOfStudy || '',
+      titles: profileInfo.titles || [],
+      tennisCertification: profileInfo.tennisCertification || '',
+      languages: profileInfo.languages || [],
+      basePrice: prices.basePrice || 0,
+      weekendPrice: prices.weekendPrice || 0,
+      additionalPersonPrice: prices.additionalPersonPrice || 0,
+      discounts: prices.discounts || {},
+      advancedOrderDiscount: prices.advancedOrderDiscount || {},
+      additionalFees: prices.additionalFees || {}
+    });
+
+    if (Array.isArray(data.selectedServices) && data.selectedServices.length > 0) {
+      const links = data.selectedServices.map(serviceId => ({
+        serviceId,
+        trainerId: trainer.id
+      }));
+      await ServiceTrainer.bulkCreate(links);
+    }
+
+    return res.status(201).json({
+      message: 'Trainer created successfully.',
+      trainer
+    });
+
+  } catch (error) {
+    console.error('Error creating trainer:', error);
+    return res.status(500).json({ error: 'Failed to create trainer.' });
+  }
+};
+
+
+exports.updateTrainer = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const updates = req.body;
+
+    const trainer = await Trainer.findByPk(id);
+    if (!trainer) {
+      return res.status(404).json({ error: 'Trainer not found' });
+    }
+
+    // Update trainer data
+    await trainer.update({
+      ...updates,
+      groupRangeFrom: updates.groupRange?.from || null,
+      groupRangeTo: updates.groupRange?.to || null
+    });
+
+    res.json({ message: 'Trainer updated successfully', trainer });
+  } catch (error) {
+    console.error('Error updating trainer:', error);
+    res.status(500).json({ error: 'Failed to update trainer' });
+  }
+};
+
+
+exports.deleteTrainer = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const trainer = await Trainer.findByPk(id);
+    if (!trainer) {
+      return res.status(404).json({ error: 'Trainer not found' });
+    }
+
+    await trainer.destroy();
+    res.json({ message: 'Trainer deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting trainer:', error);
+    res.status(500).json({ error: 'Failed to delete trainer' });
+  }
+};
+
+
+exports.getTrainerByUserId = async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    const trainer = await Trainer.findOne({ where: { userId } });
+
+    if (!trainer) {
+      return res.status(404).json({ error: 'Trainer not found for this user' });
+    }
+
+    res.json({
+      trainerId: trainer.id,
+      userId: trainer.userId,
+      ...trainer.toJSON()
+    });
+  } catch (error) {
+    console.error('Error fetching trainer by userId:', error);
+    res.status(500).json({ error: 'Server error while fetching trainer' });
+  }
+};
+
+exports.findTrainerByUserId = async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    const trainer = await Trainer.findOne({ where: { userId } });
+
+    if (!trainer) {
+      return res.status(404).json({ error: 'Trainer not found for this user' });
+    }
+
+    res.status(200).json({
+      trainerId: trainer.id,
+      userId: trainer.userId,
+      name: trainer.name,
+      surname: trainer.surname
+    });
+  } catch (error) {
+    console.error('Error in findTrainerByUserId:', error);
+    res.status(500).json({ error: 'Internal server error while fetching trainer by userId' });
   }
 };

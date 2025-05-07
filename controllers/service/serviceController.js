@@ -929,3 +929,35 @@ exports.getAllServiceTypes = async (req, res) => {
     res.status(500).json({ message: 'Failed to fetch service types' });
   }
 };
+
+
+// Get all trainers assigned to a specific service
+exports.getTrainersByServiceId = async (req, res) => {
+  try {
+    const { serviceId } = req.params;
+
+    // First, ensure the service exists
+    const service = await Service.findByPk(serviceId);
+    if (!service) {
+      return res.status(404).json({ message: 'Service not found' });
+    }
+
+    // Fetch trainers assigned via the pivot table
+    const trainers = await Trainer.findAll({
+      include: [
+        {
+          model: Service,
+          where: { id: serviceId },
+          attributes: [], // Don't include the service info
+          through: { attributes: [] }, // Hide join table data
+        },
+      ],
+      attributes: ['id', 'name', 'gender', 'yearsOfExperience', 'ageGroup'],
+    });
+
+    res.status(200).json({ serviceId, trainers });
+  } catch (error) {
+    console.error('Error fetching trainers for service:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+};

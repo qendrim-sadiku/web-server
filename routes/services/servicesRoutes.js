@@ -7,6 +7,9 @@ router.post('/', serviceController.createService);
 // Route to get multiple services by IDs via GET request
 router.get('/service-types', serviceController.getAllServiceTypes);
 
+router.get('/services/:serviceId/trainers', serviceController.getTrainersByServiceId);
+
+
 router.get('/multiple', serviceController.getMultipleServicesByIds);
 router.get('/filter', serviceController.filterServices); // Move this up
 router.get('/category/:subCategoryId', serviceController.getServicesByCategory);
