@@ -95,7 +95,8 @@ Service.belongsTo(ServiceType, { foreignKey: 'serviceTypeId' }); // Add this lin
 
 // Define associations
 Service.hasOne(ServiceDetails, { foreignKey: 'serviceId', onDelete: 'CASCADE' });
-ServiceDetails.belongsTo(Service, { foreignKey: 'serviceId' });
+ServiceDetails.belongsTo(Service, { foreignKey: 'serviceId',  // ← and this:
+  as: 'service' });
 
 Service.belongsToMany(Trainer, { through: ServiceTrainer, foreignKey: 'serviceId' });
 Trainer.belongsToMany(Service, { through: ServiceTrainer, foreignKey: 'trainerId' });

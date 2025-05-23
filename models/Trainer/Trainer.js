@@ -94,9 +94,17 @@ const Trainer = sequelize.define('Trainer', {
     allowNull: true
   },
   ageGroup: {
-    type: DataTypes.ENUM('Adults', 'Teenagers', 'Children'),
-    allowNull: false
+    type: DataTypes.TEXT,
+    allowNull: true,
+    get() {
+      const val = this.getDataValue('ageGroup');
+      return val ? JSON.parse(val) : [];
+    },
+    set(val) {
+      this.setDataValue('ageGroup', JSON.stringify(val));
+    }
   },
+  
 
   // ✅ New fields added:
   ssn: {
@@ -137,6 +145,11 @@ const Trainer = sequelize.define('Trainer', {
     set(val) {
       this.setDataValue('serviceAvailability', JSON.stringify(val));
     }
+  },
+  highlights: {
+    type: DataTypes.JSON,
+    allowNull: false,
+    defaultValue: [],
   },
   location: {
     type: DataTypes.TEXT,
@@ -245,6 +258,50 @@ const Trainer = sequelize.define('Trainer', {
     type: DataTypes.JSON,
     allowNull: true
   },  
+  equipment: {
+    type: DataTypes.TEXT,
+    allowNull: true,
+    get() {
+      const v = this.getDataValue('equipment');
+      return v ? JSON.parse(v) : [];
+    },
+    set(v) {
+      this.setDataValue('equipment', JSON.stringify(v || []));
+    }
+  },
+  trainingAids: {
+    type: DataTypes.TEXT,
+    allowNull: true,
+    get() {
+      const v = this.getDataValue('trainingAids');
+      return v ? JSON.parse(v) : [];
+    },
+    set(v) {
+      this.setDataValue('trainingAids', JSON.stringify(v || []));
+    }
+  },
+  protectiveGear: {
+    type: DataTypes.TEXT,
+    allowNull: true,
+    get() {
+      const v = this.getDataValue('protectiveGear');
+      return v ? JSON.parse(v) : [];
+    },
+    set(v) {
+      this.setDataValue('protectiveGear', JSON.stringify(v || []));
+    }
+  },
+  accessories: {
+    type: DataTypes.TEXT,
+    allowNull: true,
+    get() {
+      const v = this.getDataValue('accessories');
+      return v ? JSON.parse(v) : [];
+    },
+    set(v) {
+      this.setDataValue('accessories', JSON.stringify(v || []));
+    }
+  },
   languages: {
     type: DataTypes.TEXT,
     allowNull: true,
@@ -263,5 +320,8 @@ const Trainer = sequelize.define('Trainer', {
 
 Category.hasMany(Trainer, { foreignKey: 'categoryId' });
 Trainer.belongsTo(Category, { foreignKey: 'categoryId' });
+
+SubCategory.hasMany(Trainer, { foreignKey: 'subcategoryId' });
+Trainer.belongsTo(SubCategory, { foreignKey: 'subcategoryId' });
 
 module.exports = Trainer;

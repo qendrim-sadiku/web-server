@@ -1,3 +1,4 @@
+// models/Services/ServiceDetails.js
 const { DataTypes } = require('sequelize');
 const sequelize = require('../../config/sequelize');
 const { Service } = require('./Service');
@@ -5,10 +6,7 @@ const { Service } = require('./Service');
 const ServiceDetails = sequelize.define('ServiceDetails', {
   serviceId: {
     type: DataTypes.INTEGER,
-    references: {
-      model: Service,
-      key: 'id',
-    },
+    references: { model: Service, key: 'id' },
     allowNull: false,
   },
   fullDescription: {
@@ -19,29 +17,18 @@ const ServiceDetails = sequelize.define('ServiceDetails', {
     type: DataTypes.JSON,
     allowNull: true,
   },
-  whatsIncluded: {
-    type: DataTypes.JSON,
-    allowNull: true,
-  },
-  whatsNotIncluded: {
-    type: DataTypes.JSON,
-    allowNull: true,
-  },
-  recommendations: {
-    type: DataTypes.JSON,
-    allowNull: true,
-  },
-  whatsToBring: {
-    type: DataTypes.JSON,
-    allowNull: true,
-  },
-  coachInfo: {
-    type: DataTypes.TEXT,
-    allowNull: true,
-  },
+  // ... other fields ...
   serviceImage: {
-    type: DataTypes.JSON, // Store images as an array of URLs or file paths
+    type: DataTypes.JSON,   // now a JSON array of URLs
     allowNull: true,
+    get() {
+      const raw = this.getDataValue('serviceImage');
+      return Array.isArray(raw) ? raw : [];
+    },
+    set(imgArray) {
+      // ensure we always write an array
+      this.setDataValue('serviceImage', Array.isArray(imgArray) ? imgArray : []);
+    }
   },
 }, {
   timestamps: true,

@@ -7,20 +7,28 @@ const {Service} = require('./Service');
 const ServiceTrainer = sequelize.define('ServiceTrainer', {
   serviceId: {
     type: DataTypes.INTEGER,
-    references: {
-      model: Service,
-      key: 'id'
-    },
+    references: { model: Service, key: 'id' },
     allowNull: false
   },
   trainerId: {
     type: DataTypes.INTEGER,
-    references: {
-      model: Trainer,
-      key: 'id'
-    },
+    references: { model: Trainer, key: 'id' },
     allowNull: false
+  },
+
+  /* 🆕 per‑trainer per‑service data */
+  serviceImages: {
+    type: DataTypes.JSON,
+    allowNull: false,
+    defaultValue: []        // array of URLs
+  },
+  equipment: {
+    type: DataTypes.JSON,
+    allowNull: false,
+    defaultValue: {}        // { equipment:[], trainingAids:[], … }
   }
+}, {
+  timestamps: true          // keeps createdAt / updatedAt
 });
 
 

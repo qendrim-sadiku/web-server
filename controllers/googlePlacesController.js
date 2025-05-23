@@ -4,6 +4,7 @@ require("dotenv").config();
 const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY;
 const GOOGLE_PLACES_ENDPOINT = "https://places.googleapis.com/v1/places:searchText";
 const GOOGLE_GEOCODE_ENDPOINT = "https://maps.googleapis.com/maps/api/geocode/json";
+
 exports.getPlaces = async (req, res) => {
     try {
         const { input } = req.query;
@@ -16,7 +17,22 @@ exports.getPlaces = async (req, res) => {
 
         const response = await axios.post(
             url,
-            { textQuery: input },
+            {
+                textQuery: input,
+                languageCode: "en",
+                locationBias: {
+                    rectangle: {
+                        low: {
+                            latitude: 41.8,    // Kosovo - SW
+                            longitude: 20.3
+                        },
+                        high: {
+                            latitude: 43.0,    // Kosovo - NE
+                            longitude: 21.5
+                        }
+                    }
+                }
+            },
             {
                 headers: {
                     "Content-Type": "application/json",
@@ -24,9 +40,6 @@ exports.getPlaces = async (req, res) => {
                 },
             }
         );
-
-        // Better debug logging
-        console.log("Raw Places API Response:", JSON.stringify(response.data, null, 2));
 
         const places = response.data?.places;
 
@@ -58,31 +71,37 @@ exports.getPlaces = async (req, res) => {
  */
 exports.getPlaceDetails = async (req, res) => {
     try {
-        const { place_id } = req.query;
+        const { place_id, address } = req.query;
 
-        if (!place_id) {
-            return res.status(400).json({ error: "Place ID is required" });
+        if (!place_id && !address) {
+            return res.status(400).json({ error: "Either place_id or address is required" });
         }
 
-        // Google Geocode API request
-        const response = await axios.get(GOOGLE_GEOCODE_ENDPOINT, {
-            params: {
-                place_id,
-                key: GOOGLE_API_KEY,
-            },
-        });
+        const params = {
+            key: GOOGLE_API_KEY,
+        };
+
+        if (place_id) {
+            params.place_id = place_id;
+        } else {
+            params.address = address;
+        }
+
+        const response = await axios.get(GOOGLE_GEOCODE_ENDPOINT, { params });
 
         if (response.data.status !== "OK" || response.data.results.length === 0) {
-            return res.status(404).json({ error: "Invalid Place ID" });
+            return res.status(404).json({ error: "No results found" });
         }
 
-        const location = response.data.results[0].geometry.location;
+        const result = response.data.results[0];
+        const location = result.geometry.location;
 
         res.json({
-            label: response.data.results[0].formatted_address,
+            label: result.formatted_address,
             lat: location.lat,
             lon: location.lng,
         });
+
     } catch (error) {
         console.error("Google Geocode API error:", error.response?.data || error.message);
 

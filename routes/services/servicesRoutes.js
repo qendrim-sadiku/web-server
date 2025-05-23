@@ -9,6 +9,7 @@ router.get('/service-types', serviceController.getAllServiceTypes);
 
 router.get('/services/:serviceId/trainers', serviceController.getTrainersByServiceId);
 
+router.get('/:id/info', serviceController.getServiceInfo); 
 
 router.get('/multiple', serviceController.getMultipleServicesByIds);
 router.get('/filter', serviceController.filterServices); // Move this up

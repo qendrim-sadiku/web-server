@@ -4,6 +4,10 @@ const Booking = require('../../models/Bookings/Booking'); // Assuming Booking mo
 const BookingDate = require('../../models/Bookings/BookingDate');
 const User = require('../../models/User'); // Import the User model
 const { ServiceTrainer } = require('../../models/Services/Service');
+const saveBase64Image = require('../../util/saveBase64Image');
+const ServiceDetails     = require('../../models/Services/ServiceDetails');
+const Category = require('../../models/Category/Category');
+const SubCategory = require('../../models/Category/SubCategory');
 
 
 
@@ -625,114 +629,436 @@ exports.getMultipleTrainersAvailability = async (req, res) => {
 //   }
 // };
 
+// exports.createTrainer = async (req, res) => {
+//   try {
+//     const userId = req.user.id;
+
+//     // 👤 Get full name and user
+//     const user = await User.findByPk(userId);
+//     if (!user) {
+//       return res.status(404).json({ error: 'User not found.' });
+//     }
+
+//     // ✅ Update user role to 'trainer'
+//     await user.update({ role: 'trainer' });
+
+//     const fullName = user.name || '';
+//     const nameParts = fullName.trim().split(' ');
+//     const name = nameParts[0] || 'Unknown';
+//     const surname = nameParts.length > 1 ? nameParts.slice(1).join(' ') : 'Unknown';
+
+//     const data = req.body;
+//     const specifications = data.serviceProviderSpecifications || {};
+//     const equipments = data.serviceProviderEquipments || {};
+//     const prices = data.servicePrices || {};
+//     const profileInfo = data.serviceProfileInformation || {};
+
+//     const experienceMap = {
+//       '0–2 years': 1,
+//       '3–5 years': 4,
+//       '6–10 years': 7,
+//       '10+ years': 11
+//     };
+//     const yearsOfExperience = experienceMap[specifications.experience] || 0;
+
+//     const existingTrainer = await Trainer.findOne({ where: { userId } });
+//     if (existingTrainer) {
+//       return res.status(400).json({ error: 'A trainer with this user already exists.' });
+//     }
+
+//     const trainer = await Trainer.create({
+//       userId,
+//       name,
+//       surname,
+//       type: data.type === 'individual' ? 'Individual' : 'Business',
+//       avatar: profileInfo.avatarUrl || '', // ✅ SETTING THE AVATAR HERE
+
+//       backgroundCheck: '',
+//       description: 'Professional trainer offering tailored services.',
+//       userRating: 0,
+//       specialization: specifications.features?.[0] || 'General',
+//       level: 'Pro',
+//       hourlyRate: prices.basePrice || 0,
+//       categoryId: data.selectedCategoryId,
+//       subcategoryId: data.selectedSubcategoryIds?.[0],
+//       gender: 'Male',
+//       skills: [],
+//       yearsOfExperience,
+//       certification: specifications.certificationStatus || '',
+//       ageGroup: specifications.ageGroup?.[0] || 'Adults',
+//       ssn: data.individualData?.ssn || null,
+//       typeOfServiceProvider: specifications.typeOfServiceProvider || '',
+//       certificationStatus: specifications.certificationStatus || '',
+//       providerCategory: specifications.providerCategory || '',
+//       availability: specifications.availability || '',
+//       style: specifications.style || '',
+//       distance: specifications.distance || '',
+//       serviceAvailability: specifications.serviceAvailability || [],
+//       location: specifications.location || [],
+//       settings: specifications.settings || [],
+//       serviceFormat: specifications.serviceFormat || [],
+//       groupRangeFrom: specifications.groupRange?.from || null,
+//       groupRangeTo: specifications.groupRange?.to || null,
+//       duration: specifications.duration || '',
+//       customDurationHours: specifications.customDurationHours || null,
+//       features: specifications.features || [],
+//       expertise: specifications.expertise || [],
+//       equipment: equipments.equipment || [],
+//       trainingAids: equipments.trainingAids || [],
+//       protectiveGear: equipments.protectiveGear || [],
+//       accessories: equipments.accessories || [],
+//       degree: profileInfo.degree || '',
+//       fieldOfStudy: profileInfo.fieldOfStudy || '',
+//       titles: profileInfo.titles || [],
+//       tennisCertification: profileInfo.tennisCertification || '',
+//       languages: profileInfo.languages || [],
+//       basePrice: prices.basePrice || 0,
+//       weekendPrice: prices.weekendPrice || 0,
+//       additionalPersonPrice: prices.additionalPersonPrice || 0,
+//       discounts: prices.discounts || {},
+//       advancedOrderDiscount: prices.advancedOrderDiscount || {},
+//       additionalFees: prices.additionalFees || {}
+//     });
+
+//     if (Array.isArray(data.selectedServices) && data.selectedServices.length > 0) {
+//       const links = data.selectedServices.map(serviceId => ({
+//         serviceId,
+//         trainerId: trainer.id
+//       }));
+//       await ServiceTrainer.bulkCreate(links);
+//     }
+
+//     return res.status(201).json({
+//       message: 'Trainer created successfully.',
+//       trainer: {
+//         id: trainer.id,
+//         categoryId:    trainer.categoryId,     // ← here
+//         subcategoryId: trainer.subcategoryId,  // ← and here
+//         ...trainer.toJSON()
+//       }
+//     });
+
+//   } catch (error) {
+//     console.error('Error creating trainer:', error);
+//     return res.status(500).json({ error: 'Failed to create trainer.' });
+//   }
+// };
+
+// controllers/trainerController.js
+
+// exports.createTrainer = async (req, res) => {
+//   try {
+//     // 1️⃣ Promote user to trainer
+//     const userId = req.user.id;
+//     const user   = await User.findByPk(userId);
+//     if (!user) return res.status(404).json({ error: 'User not found.' });
+//     await user.update({ role: 'trainer' });
+
+//     // 2️⃣ Pull apart the payload
+//     const {
+//       type,
+//       individualData = {},
+//       selectedCategoryId,
+//       selectedSubcategoryIds = [],
+//       selectedServices = [],    // [32, 34] etc
+//       images = [],              // array of base64 strings
+//       mainImageIndex = 0,
+//       serviceProviderSpecifications = {},
+//       serviceProviderEquipments     = {},
+//       servicePrices                 = {},
+//       serviceProfileInformation     = {}
+//     } = req.body;
+
+//     // 3️⃣ Persist each Base64 → disk
+//     const savedImages = [];
+//     for (let i = 0; i < images.length; i++) {
+//       try {
+//         const url = saveBase64Image(images[i], userId, i);
+//         savedImages.push({ url, order: i });
+//       } catch (err) {
+//         console.error(`Failed to save image #${i}:`, err);
+//       }
+//     }
+//     const avatar = savedImages[mainImageIndex]?.url || '';
+
+//     // 4️⃣ Simple experience→years mapping
+//     const expMap = { '0–2 years':1, '3–5 years':4, '6–10 years':7, '10+ years':11 };
+//     const yearsOfExperience = expMap[serviceProviderSpecifications.experience] || 0;
+
+//     // 5️⃣ Prevent dupes
+//     if (await Trainer.findOne({ where:{ userId } })) {
+//       return res.status(400).json({ error:'A trainer already exists for this user.' });
+//     }
+
+//     // 6️⃣ Spin up the Trainer row
+//     const trainer = await Trainer.create({
+//       userId,
+//       name:    (user.name||'').split(' ')[0] || 'Unknown',
+//       surname: (user.name||'').split(' ').slice(1).join(' ') || 'Unknown',
+//       type:    type==='individual' ? 'Individual' : 'Business',
+//       avatar,
+//       // you can pull highlights etc from req.body if you like:
+//       highlights: [],
+//       description: serviceProfileInformation.description || '',
+//       userRating: 0,
+//       backgroundCheck: '',
+//       specialization:    serviceProviderSpecifications.features?.[0] || 'General',
+//       level:             'Pro',
+//       hourlyRate:        servicePrices.basePrice || 0,
+//       categoryId:        selectedCategoryId,
+//       subcategoryId:     selectedSubcategoryIds[0] || null,
+//       gender:            'Male',
+//       skills:            [],
+//       yearsOfExperience,
+//       certification:     serviceProviderSpecifications.certificationStatus || '',
+//       ageGroup:          serviceProviderSpecifications.ageGroup || [],
+//       ssn:               individualData.ssn || null,
+//       typeOfServiceProvider: serviceProviderSpecifications.typeOfServiceProvider || '',
+//       certificationStatus:   serviceProviderSpecifications.certificationStatus || '',
+//       providerCategory:      serviceProviderSpecifications.providerCategory || '',
+//       availability:          serviceProviderSpecifications.availability || '',
+//       style:                 serviceProviderSpecifications.style || '',
+//       distance:              serviceProviderSpecifications.distance || '',
+//       serviceAvailability:   serviceProviderSpecifications.serviceAvailability || [],
+//       location:              serviceProviderSpecifications.location || [],
+//       settings:              serviceProviderSpecifications.settings || [],
+//       serviceFormat:         serviceProviderSpecifications.serviceFormat || [],
+//       groupRangeFrom:        serviceProviderSpecifications.groupRange?.from || null,
+//       groupRangeTo:          serviceProviderSpecifications.groupRange?.to   || null,
+//       duration:              serviceProviderSpecifications.duration || '',
+//       customDurationHours:   serviceProviderSpecifications.customDurationHours || null,
+//       features:              serviceProviderSpecifications.features || [],
+//       expertise:             serviceProviderSpecifications.expertise || [],
+//       equipment:             serviceProviderEquipments.equipment || [],
+//       trainingAids:          serviceProviderEquipments.trainingAids || [],
+//       protectiveGear:        serviceProviderEquipments.protectiveGear || [],
+//       accessories:           serviceProviderEquipments.accessories || [],
+//       degree:                serviceProfileInformation.degree || '',
+//       fieldOfStudy:          serviceProfileInformation.fieldOfStudy || '',
+//       titles:                serviceProfileInformation.titles || [],
+//       tennisCertification:   serviceProfileInformation.tennisCertification || '',
+//       languages:             serviceProfileInformation.languages || [],
+//       basePrice:             servicePrices.basePrice || 0,
+//       weekendPrice:          servicePrices.weekendPrice || 0,
+//       additionalPersonPrice: servicePrices.additionalPersonPrice || 0,
+//       discounts:             servicePrices.discounts || {},
+//       advancedOrderDiscount: servicePrices.advancedOrderDiscount || {},
+//       additionalFees:        servicePrices.additionalFees || {}
+//     });
+
+//     // 7️⃣ Link trainer ↔ services
+//     if (selectedServices.length > 0) {
+//       // a) pivot table
+//       await ServiceTrainer.bulkCreate(
+//         selectedServices.map(serviceId => ({ serviceId, trainerId: trainer.id }))
+//       );
+
+//       // b) for each service, upsert its details.serviceImage = [ ...saved URLs ]
+//       const urls = savedImages.map(img => img.url);
+//       await Promise.all(
+//         selectedServices.map(async serviceId => {
+//           const [details, created] = await ServiceDetails.findOrCreate({
+//             where: { serviceId },
+//             defaults: {
+//               serviceId,
+//               fullDescription:  '',
+//               highlights:       [],
+//               whatsIncluded:    [],
+//               whatsNotIncluded: [],
+//               recommendations:  [],
+//               whatsToBring:     [],
+//               coachInfo:        '',
+//               serviceImage:     urls
+//             }
+//           });
+//           if (!created) {
+//             details.serviceImage = urls;
+//             await details.save();
+//           }
+//         })
+//       );
+//     }
+
+//     // 8️⃣ All done
+//     return res.status(201).json({
+//       message: 'Trainer created successfully.',
+//       trainer: trainer.toJSON()
+//     });
+
+//   } catch (error) {
+//     console.error('Error creating trainer:', error);
+//     return res.status(500).json({ error:'Failed to create trainer.' });
+//   }
+// };
+
+
+// controllers/trainerController.js
+
+
+// controllers/trainerController.js
+
+
+
 exports.createTrainer = async (req, res) => {
   try {
+    // 1️⃣ Promote user to trainer
     const userId = req.user.id;
-
-    // 👤 Get full name and user
-    const user = await User.findByPk(userId);
-    if (!user) {
-      return res.status(404).json({ error: 'User not found.' });
-    }
-
-    // ✅ Update user role to 'trainer'
+    const user   = await User.findByPk(userId);
+    if (!user) return res.status(404).json({ error: 'User not found.' });
     await user.update({ role: 'trainer' });
 
-    const fullName = user.name || '';
-    const nameParts = fullName.trim().split(' ');
-    const name = nameParts[0] || 'Unknown';
-    const surname = nameParts.length > 1 ? nameParts.slice(1).join(' ') : 'Unknown';
+    // 2️⃣ Destructure payload
+    const {
+      type                          = 'individual',
+      individualData                = {},
+      selectedCategoryId,
+      selectedSubcategoryIds        = [],
+      selectedServices              = [],  // [serviceId or { id, images, equipment, ... }]
+      images                        = [],  // top-level base64 images
+      mainImageIndex                = 0,
+      serviceProviderSpecifications = {},
+      serviceProviderEquipments     = {},
+      servicePrices                 = {},
+      serviceProfileInformation     = {},
+      highlights                    = []
+    } = req.body;
 
-    const data = req.body;
-    const specifications = data.serviceProviderSpecifications || {};
-    const equipments = data.serviceProviderEquipments || {};
-    const prices = data.servicePrices || {};
-    const profileInfo = data.serviceProfileInformation || {};
+    // 3️⃣ Save images → avatar fallback
+    const savedAvatars = images.map((b64, i) =>
+      saveBase64Image(b64, `${userId}_avatar`, i)
+    );
+    const avatar = serviceProfileInformation.avatarUrl
+                 || savedAvatars[mainImageIndex]
+                 || '';
 
-    const experienceMap = {
+    // 4️⃣ Prevent duplicate trainer
+    if (await Trainer.findOne({ where: { userId } })) {
+      return res.status(400).json({ error: 'Trainer already exists for this user.' });
+    }
+
+    // 5️⃣ Map experience string → integer
+    const yearsMap = {
       '0–2 years': 1,
       '3–5 years': 4,
       '6–10 years': 7,
-      '10+ years': 11
+      '10+ years': 11,
+      '11–15 years': 13
     };
-    const yearsOfExperience = experienceMap[specifications.experience] || 0;
+    const yearsOfExperience = yearsMap[serviceProviderSpecifications.experience] || 0;
 
-    const existingTrainer = await Trainer.findOne({ where: { userId } });
-    if (existingTrainer) {
-      return res.status(400).json({ error: 'A trainer with this user already exists.' });
-    }
-
+    // 6️⃣ Create the Trainer row, including equipment fields
     const trainer = await Trainer.create({
       userId,
-      name,
-      surname,
-      type: data.type === 'individual' ? 'Individual' : 'Business',
-      backgroundCheck: '',
-      description: 'Professional trainer offering tailored services.',
-      avatar: '',
-      userRating: 0,
-      specialization: specifications.features?.[0] || 'General',
-      level: 'Pro',
-      hourlyRate: prices.basePrice || 0,
-      categoryId: data.selectedCategoryId,
-      subcategoryId: data.selectedSubcategoryIds?.[0],
-      gender: 'Male',
-      skills: [],
+      name:    (user.name||'').split(' ')[0] || 'Unknown',
+      surname: (user.name||'').split(' ').slice(1).join(' ') || 'Unknown',
+      type:    type === 'individual' ? 'Individual' : 'Business',
+      avatar,
+      highlights,
+
+      description:           serviceProfileInformation.description || '',
+      specialization:        serviceProviderSpecifications.features?.[0] || 'General',
+      level:                 'Pro',
+      hourlyRate:            servicePrices.basePrice || 0,
+      categoryId:            selectedCategoryId,
+      subcategoryId:         selectedSubcategoryIds[0] || null,
+      gender:                serviceProviderSpecifications.gender || 'Other',
       yearsOfExperience,
-      certification: specifications.certificationStatus || '',
-      ageGroup: specifications.ageGroup?.[0] || 'Adults',
-      ssn: data.individualData?.ssn || null,
-      typeOfServiceProvider: specifications.typeOfServiceProvider || '',
-      certificationStatus: specifications.certificationStatus || '',
-      providerCategory: specifications.providerCategory || '',
-      availability: specifications.availability || '',
-      style: specifications.style || '',
-      distance: specifications.distance || '',
-      serviceAvailability: specifications.serviceAvailability || [],
-      location: specifications.location || [],
-      settings: specifications.settings || [],
-      serviceFormat: specifications.serviceFormat || [],
-      groupRangeFrom: specifications.groupRange?.from || null,
-      groupRangeTo: specifications.groupRange?.to || null,
-      duration: specifications.duration || '',
-      customDurationHours: specifications.customDurationHours || null,
-      features: specifications.features || [],
-      expertise: specifications.expertise || [],
-      equipment: equipments.equipment || [],
-      trainingAids: equipments.trainingAids || [],
-      protectiveGear: equipments.protectiveGear || [],
-      accessories: equipments.accessories || [],
-      degree: profileInfo.degree || '',
-      fieldOfStudy: profileInfo.fieldOfStudy || '',
-      titles: profileInfo.titles || [],
-      tennisCertification: profileInfo.tennisCertification || '',
-      languages: profileInfo.languages || [],
-      basePrice: prices.basePrice || 0,
-      weekendPrice: prices.weekendPrice || 0,
-      additionalPersonPrice: prices.additionalPersonPrice || 0,
-      discounts: prices.discounts || {},
-      advancedOrderDiscount: prices.advancedOrderDiscount || {},
-      additionalFees: prices.additionalFees || {}
+      certification:         serviceProviderSpecifications.certificationStatus || '',
+      ssn:                   individualData.ssn || null,
+      typeOfServiceProvider: serviceProviderSpecifications.typeOfServiceProvider || '',
+      providerCategory:      serviceProviderSpecifications.providerCategory || '',
+      availability:          serviceProviderSpecifications.availability || '',
+      style:                 serviceProviderSpecifications.style || '',
+      distance:              serviceProviderSpecifications.distance || '',
+      serviceAvailability:   serviceProviderSpecifications.serviceAvailability || [],
+      ageGroup:              serviceProviderSpecifications.ageGroup || [],
+      location:              serviceProviderSpecifications.location || [],
+      settings:              serviceProviderSpecifications.settings || [],
+      serviceFormat:         serviceProviderSpecifications.serviceFormat || [],
+      groupRangeFrom:        serviceProviderSpecifications.groupRange?.from || null,
+      groupRangeTo:          serviceProviderSpecifications.groupRange?.to   || null,
+      duration:              serviceProviderSpecifications.duration || '',
+      customDurationHours:   serviceProviderSpecifications.customDurationHours || null,
+      features:              serviceProviderSpecifications.features || [],
+      expertise:             serviceProviderSpecifications.expertise || [],
+
+      // ◀️ Persist these four columns
+      equipment:      serviceProviderEquipments.equipment      || [],
+      trainingAids:   serviceProviderEquipments.trainingAids   || [],
+      protectiveGear: serviceProviderEquipments.protectiveGear || [],
+      accessories:    serviceProviderEquipments.accessories    || [],
+
+      // Profile & pricing
+      degree:                serviceProfileInformation.degree                || '',
+      fieldOfStudy:          serviceProfileInformation.fieldOfStudy          || '',
+      titles:                serviceProfileInformation.titles                || [],
+      tennisCertification:   serviceProfileInformation.tennisCertification   || '',
+      languages:             serviceProfileInformation.languages             || [],
+
+      basePrice:             servicePrices.basePrice             || 0,
+      weekendPrice:          servicePrices.weekendPrice          || 0,
+      additionalPersonPrice: servicePrices.additionalPersonPrice || 0,
+      discounts:             servicePrices.discounts             || {},
+      advancedOrderDiscount: servicePrices.advancedOrderDiscount || {},
+      additionalFees:        servicePrices.additionalFees        || {}
     });
 
-    if (Array.isArray(data.selectedServices) && data.selectedServices.length > 0) {
-      const links = data.selectedServices.map(serviceId => ({
-        serviceId,
-        trainerId: trainer.id
-      }));
-      await ServiceTrainer.bulkCreate(links);
+    // 7️⃣ Link trainer ↔ services & upsert per-service details (optional)
+    for (const item of selectedServices) {
+      const serviceId = typeof item === 'number' ? item : item.id;
+      if (!serviceId) continue;
+
+      // save per-service images
+      const imgs = Array.isArray(item.images) ? item.images : images;
+      const urls = imgs.map((b64, idx) =>
+        saveBase64Image(b64, `${userId}_${serviceId}`, idx)
+      );
+      const gear = item.equipment || {};
+
+      // pivot upsert
+      const [pivot, created] = await ServiceTrainer.findOrCreate({
+        where: { serviceId, trainerId: trainer.id },
+        defaults: { serviceImages: urls, equipment: gear }
+      });
+      if (!created) {
+        pivot.serviceImages = urls;
+        pivot.equipment     = gear;
+        await pivot.save();
+      }
+
+      // shared details upsert
+      const [details, detailCreated] = await ServiceDetails.findOrCreate({
+        where: { serviceId },
+        defaults: {
+          serviceId,
+          fullDescription:  serviceProfileInformation.fullDescription || '',
+          highlights:       serviceProfileInformation.highlights           || [],
+          whatsIncluded:    serviceProfileInformation.whatsIncluded        || [],
+          whatsNotIncluded: serviceProfileInformation.whatsNotIncluded     || [],
+          recommendations:  serviceProfileInformation.recommendations       || [],
+          coachInfo:        serviceProfileInformation.coachInfo            || '',
+          serviceImage:     urls
+        }
+      });
+      if (!detailCreated) {
+        details.serviceImage = urls;
+        await details.save();
+      }
     }
 
+    // 8️⃣ Done
     return res.status(201).json({
       message: 'Trainer created successfully.',
-      trainer
+      trainer: trainer.toJSON()
     });
 
-  } catch (error) {
-    console.error('Error creating trainer:', error);
+  } catch (err) {
+    console.error('createTrainer error:', err);
     return res.status(500).json({ error: 'Failed to create trainer.' });
   }
 };
+
+
 
 
 exports.updateTrainer = async (req, res) => {
@@ -780,19 +1106,76 @@ exports.deleteTrainer = async (req, res) => {
 
 exports.getTrainerByUserId = async (req, res) => {
   try {
-    const { userId } = req.params;
-
-    const trainer = await Trainer.findOne({ where: { userId } });
-
+    const trainer = await Trainer.findOne({
+      where: { userId: req.params.userId },
+      include: [
+        { model: Category,    attributes: ['name'] },
+        { model: SubCategory, attributes: ['name'] }
+      ]
+    });
     if (!trainer) {
       return res.status(404).json({ error: 'Trainer not found for this user' });
     }
 
-    res.json({
-      trainerId: trainer.id,
-      userId: trainer.userId,
-      ...trainer.toJSON()
+    const t = trainer.get({ plain: true });
+    return res.status(200).json({
+      trainerId:       t.id,
+      userId:          t.userId,
+      categoryId:      t.categoryId,
+      subcategoryId:   t.subcategoryId,
+      categoryName:    t.Category?.name,
+      subcategoryName: t.SubCategory?.name,
+
+      // core fields
+      name:                   t.name,
+      surname:                t.surname,
+      description:            t.description,
+      avatar:                 t.avatar,
+      userRating:            t.userRating,
+      specialization:         t.specialization,
+      level:                  t.level,
+      hourlyRate:             t.hourlyRate,
+      gender:                 t.gender,
+      distance:          t.distance,          // ← add this
+
+      yearsOfExperience:      t.yearsOfExperience,
+      ageGroup:               t.ageGroup,
+      serviceAvailability:    t.serviceAvailability,
+      location:               t.location,
+      settings:               t.settings,
+      serviceFormat:          t.serviceFormat,
+      features:               t.features,
+      expertise:              t.expertise,
+
+      // serviceProviderEquipments now included:
+      serviceProviderEquipments: {
+        equipment:      t.equipment,
+        trainingAids:   t.trainingAids,
+        protectiveGear: t.protectiveGear,
+        accessories:    t.accessories
+      },
+
+      // profile & pricing
+      degrees:                t.degree,
+      fieldOfStudy:           t.fieldOfStudy,
+      tennisCertification:    t.tennisCertification,
+      languages:              t.languages,
+      highlights:             t.highlights,
+      groupRangeFrom:         t.groupRangeFrom,
+      groupRangeTo:           t.groupRangeTo,
+      duration:               t.duration,
+      customDurationHours:    t.customDurationHours,
+      basePrice:              t.basePrice,
+      weekendPrice:           t.weekendPrice,
+      additionalPersonPrice:  t.additionalPersonPrice,
+      discounts:              t.discounts,
+      advancedOrderDiscount:  t.advancedOrderDiscount,
+      additionalFees:         t.additionalFees,
+
+      createdAt:              t.createdAt,
+      updatedAt:              t.updatedAt
     });
+
   } catch (error) {
     console.error('Error fetching trainer by userId:', error);
     res.status(500).json({ error: 'Server error while fetching trainer' });
@@ -812,6 +1195,8 @@ exports.findTrainerByUserId = async (req, res) => {
     res.status(200).json({
       trainerId: trainer.id,
       userId: trainer.userId,
+      categoryId:    trainer.categoryId,     // 🆕
+      subcategoryId: trainer.subcategoryId,  // 🆕
       name: trainer.name,
       surname: trainer.surname
     });

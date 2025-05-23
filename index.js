@@ -134,8 +134,8 @@ if (!fs.existsSync(uploadDir)) {
 }
 
 // Middleware setup
-app.use(bodyParser.json()); // Parse JSON request bodies
-app.use(bodyParser.urlencoded({ extended: true })); // Parse URL-encoded data
+app.use(bodyParser.json({ limit: '10mb' }));
+app.use(bodyParser.urlencoded({ extended: true, limit: '10mb' }));
 
 const allowedOrigins = [
   'http://localhost:4200',      // Angular dev

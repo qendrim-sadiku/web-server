@@ -908,6 +908,8 @@ exports.getMultipleServicesByIds = async (req, res) => {
         id: trainer.id,
         name: trainer.name,
       })),
+      serviceImage:     service.detail?.serviceImage     || [] ,  // ← here are all your service images
+
       details: service.ServiceDetails, // Updated relationship name
     }));
 
@@ -959,5 +961,66 @@ exports.getTrainersByServiceId = async (req, res) => {
   } catch (error) {
     console.error('Error fetching trainers for service:', error.message);
     res.status(500).json({ error: error.message });
+  }
+};
+
+
+exports.getServiceInfo = async (req, res) => {
+  try {
+    const svc = await Service.findByPk(req.params.id, {
+      attributes: [
+        'id',
+        'name',
+        'description',
+        'image',
+        'duration',
+        'hourlyRate',
+        'level',
+        'type'
+      ],
+      include: [{
+        model: ServiceDetails,
+        attributes: [
+          'serviceImage',      // JSON array of gallery URLs
+          'fullDescription',
+          'highlights',
+          'whatsIncluded',
+          'whatsNotIncluded',
+          'recommendations',
+          'coachInfo'
+        ]
+      }]
+    });
+
+    if (!svc) return res.status(404).json({ error: 'Service not found' });
+
+    // massage the JSON a bit so the client doesn’t have to dive into ServiceDetails
+    const detail = svc.ServiceDetail || {};
+    const payload = {
+      id:           svc.id,
+      name:         svc.name,
+      type:         svc.type,
+      level:        svc.level,
+      description:  svc.description,
+      image:        svc.image,           // hero / banner (optional column on Service)
+      duration:     svc.duration,
+      hourlyRate:   svc.hourlyRate,
+
+      /* SHARED gallery (if you kept it) */
+      serviceImages: detail.serviceImage || [],
+
+      /* extra long‑form info */
+      fullDescription: detail.fullDescription || '',
+      highlights:      detail.highlights      || [],
+      whatsIncluded:   detail.whatsIncluded   || [],
+      whatsNotIncluded:detail.whatsNotIncluded|| [],
+      recommendations: detail.recommendations || [],
+      coachInfo:       detail.coachInfo       || ''
+    };
+
+    res.json(payload);
+  } catch (err) {
+    console.error('getServiceInfo error:', err);
+    res.status(500).json({ error: 'Failed to fetch service info.' });
   }
 };
