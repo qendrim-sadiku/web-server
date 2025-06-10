@@ -7,11 +7,21 @@ const { authenticateJWT } = require('../../middleware/authMiddleware');
 // Create a new trainer
 router.post('/',authenticateJWT, trainerController.createTrainer);
 
+// ✅ NEW: Full update (including services + images + details)
+router.put('/:id/full', authenticateJWT, trainerController.updateTrainerFull);
+
 // ✅ Get a trainer by userId
 router.get('/user/:userId', trainerController.getTrainerByUserId);
 
 router.get('/by-user/:userId', trainerController.findTrainerByUserId);
 
+
+
+router.patch('/:id/languages',      trainerController.updateTrainerLanguages);
+router.patch('/:id/field-of-study', trainerController.updateTrainerFieldOfStudy);
+router.patch('/:id/degree',         trainerController.updateTrainerDegree);
+router.patch('/:id/tennis-cert',    trainerController.updateTrainerTennisCert);
+router.patch('/:id/distance',       trainerController.updateTrainerDistance);
 
 // Update a trainer
 router.put('/:id', trainerController.updateTrainer);

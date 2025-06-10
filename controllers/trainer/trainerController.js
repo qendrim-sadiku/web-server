@@ -3,7 +3,7 @@ const Review = require('../../models/Trainer/Review'); // Assuming Review model 
 const Booking = require('../../models/Bookings/Booking'); // Assuming Booking model exists
 const BookingDate = require('../../models/Bookings/BookingDate');
 const User = require('../../models/User'); // Import the User model
-const { ServiceTrainer } = require('../../models/Services/Service');
+const { ServiceTrainer, Service } = require('../../models/Services/Service');
 const saveBase64Image = require('../../util/saveBase64Image');
 const ServiceDetails     = require('../../models/Services/ServiceDetails');
 const Category = require('../../models/Category/Category');
@@ -931,6 +931,10 @@ exports.createTrainer = async (req, res) => {
                  || savedAvatars[mainImageIndex]
                  || '';
 
+
+    const trainerDescription = serviceProfileInformation.trainerDescription || '';
+
+
     // 4️⃣ Prevent duplicate trainer
     if (await Trainer.findOne({ where: { userId } })) {
       return res.status(400).json({ error: 'Trainer already exists for this user.' });
@@ -954,7 +958,7 @@ exports.createTrainer = async (req, res) => {
       type:    type === 'individual' ? 'Individual' : 'Business',
       avatar,
       highlights,
-
+      trainerDescription,
       description:           serviceProfileInformation.description || '',
       specialization:        serviceProviderSpecifications.features?.[0] || 'General',
       level:                 'Pro',
@@ -1059,6 +1063,281 @@ exports.createTrainer = async (req, res) => {
 };
 
 
+// Add this helper at the top of your controller file:
+function isBase64DataUri(str) {
+  return (
+    typeof str === 'string' &&
+    str.startsWith('data:image') &&
+    str.includes(';base64,')
+  );
+}
+
+// models/Trainer/Trainer.js, models/Services/ServiceDetails.js etc. are assumed to be correctly defined
+// const saveBase64Image = require('../../util/saveBase64Image'); // Assumed to be correct
+
+// Helper to detect a base64 data URI (already in your code)
+function isBase64DataUri(str) {
+  return (
+    typeof str === 'string' &&
+    str.startsWith('data:image') &&
+    str.includes(';base64,')
+  );
+}
+
+exports.updateTrainerFull = async (req, res) => {
+  try {
+    const trainerId = parseInt(req.params.id, 10);
+    const existingTrainer = await Trainer.findByPk(trainerId); // Changed variable name for clarity
+    if (!existingTrainer) {
+      return res.status(404).json({ error: 'Trainer not found.' });
+    }
+
+    const {
+      type = existingTrainer.type,
+      individualData = {}, // Assuming ssn might be in here
+      selectedCategoryId = existingTrainer.categoryId,
+      selectedSubcategoryIds = [existingTrainer.subcategoryId],
+      selectedServices = [], // Expected: Array of objects { id, images: [...], equipment: {}, fullDescription, ... }
+      images = [], // Top-level images, typically for trainer avatar
+      mainImageIndex = 0,
+      serviceProviderSpecifications = {},
+      serviceProviderEquipments = {},
+      servicePrices = {},
+      serviceProfileInformation = {},
+      highlights = existingTrainer.highlights || []
+    } = req.body;
+
+    // --- Handle Avatar Update ---
+    let avatarToSave = existingTrainer.avatar; // Use 'existingTrainer'
+    if (serviceProfileInformation.avatarUrl) { // Explicit avatar URL from profile info takes precedence
+        avatarToSave = serviceProfileInformation.avatarUrl;
+    } else if (Array.isArray(images) && images.length > 0) {
+      const primaryAvatarImage = images[mainImageIndex];
+      if (primaryAvatarImage) {
+        if (isBase64DataUri(primaryAvatarImage)) {
+          try {
+            // saveBase64Image should return a relative path, e.g., /uploads/avatar-image.jpg
+            avatarToSave = saveBase64Image(primaryAvatarImage, `${existingTrainer.userId}_avatar_main`, 0);
+          } catch (saveError) {
+            console.error(`Error saving main avatar image: ${saveError.message}`);
+            // Decide if you want to halt or continue with the old avatar
+          }
+        } else {
+          avatarToSave = primaryAvatarImage; // Assume it's already a URL/path
+        }
+      }
+    }
+    // If images array was empty and no avatarUrl, avatarToSave remains existingTrainer.avatar
+
+    // --- Map Experience String to Integer ---
+    const yearsMap = {
+      '0–2 years': 1, '3–5 years': 4, '6–10 years': 7,
+      '10+ years': 11, '11–15 years': 13, '16+ years': 16 // Added 16+ years
+    };
+    const yearsOfExperience = yearsMap[serviceProviderSpecifications.experience] || existingTrainer.yearsOfExperience;
+
+    // --- Update Trainer's Own Columns ---
+    await existingTrainer.update({
+      name: req.body.name || (req.user && req.user.name ? req.user.name.split(' ')[0] : existingTrainer.name),
+      surname: req.body.surname || (req.user && req.user.name ? req.user.name.split(' ').slice(1).join(' ') : existingTrainer.surname),
+      type: type === 'individual' ? 'Individual' : (type === 'business' ? 'Business' : existingTrainer.type),
+      avatar: avatarToSave,
+      highlights: Array.isArray(highlights) ? highlights : existingTrainer.highlights, // Ensure it's an array
+      trainerDescription: serviceProfileInformation.trainerDescription !== undefined ? serviceProfileInformation.trainerDescription : existingTrainer.trainerDescription,
+      description: serviceProfileInformation.description !== undefined ? serviceProfileInformation.description : existingTrainer.description,
+      specialization: (serviceProviderSpecifications.features && serviceProviderSpecifications.features.length > 0 ? serviceProviderSpecifications.features[0] : existingTrainer.specialization),
+      level: serviceProviderSpecifications.typeOfServiceProvider || existingTrainer.level, // Assuming level means typeOfServiceProvider
+      hourlyRate: servicePrices.basePrice !== undefined ? servicePrices.basePrice : existingTrainer.hourlyRate,
+      categoryId: selectedCategoryId,
+      subcategoryId: Array.isArray(selectedSubcategoryIds) && selectedSubcategoryIds.length > 0 ? selectedSubcategoryIds[0] : existingTrainer.subcategoryId,
+      gender: serviceProviderSpecifications.gender || existingTrainer.gender,
+      yearsOfExperience,
+      certification: serviceProviderSpecifications.certificationStatus !== undefined ? serviceProviderSpecifications.certificationStatus : existingTrainer.certification, // From trainer table
+      ssn: individualData.ssn !== undefined ? individualData.ssn : existingTrainer.ssn,
+      typeOfServiceProvider: serviceProviderSpecifications.typeOfServiceProvider !== undefined ? serviceProviderSpecifications.typeOfServiceProvider : existingTrainer.typeOfServiceProvider,
+      certificationStatus: serviceProviderSpecifications.certificationStatus !== undefined ? serviceProviderSpecifications.certificationStatus : existingTrainer.certificationStatus, // From specifications
+      providerCategory: serviceProviderSpecifications.providerCategory !== undefined ? serviceProviderSpecifications.providerCategory : existingTrainer.providerCategory,
+      availability: serviceProviderSpecifications.availability !== undefined ? serviceProviderSpecifications.availability : existingTrainer.availability,
+      style: serviceProviderSpecifications.style !== undefined ? serviceProviderSpecifications.style : existingTrainer.style,
+      distance: serviceProviderSpecifications.distance !== undefined ? serviceProviderSpecifications.distance : existingTrainer.distance,
+      serviceAvailability: Array.isArray(serviceProviderSpecifications.serviceAvailability) ? serviceProviderSpecifications.serviceAvailability : existingTrainer.serviceAvailability,
+      ageGroup: Array.isArray(serviceProviderSpecifications.ageGroup) ? serviceProviderSpecifications.ageGroup : existingTrainer.ageGroup,
+      location: Array.isArray(serviceProviderSpecifications.location) ? serviceProviderSpecifications.location : existingTrainer.location,
+      settings: Array.isArray(serviceProviderSpecifications.settings) ? serviceProviderSpecifications.settings : existingTrainer.settings,
+      serviceFormat: Array.isArray(serviceProviderSpecifications.serviceFormat) ? serviceProviderSpecifications.serviceFormat : existingTrainer.serviceFormat,
+      groupRangeFrom: serviceProviderSpecifications.groupRange && serviceProviderSpecifications.groupRange.from !== undefined ? serviceProviderSpecifications.groupRange.from : existingTrainer.groupRangeFrom,
+      groupRangeTo: serviceProviderSpecifications.groupRange && serviceProviderSpecifications.groupRange.to !== undefined ? serviceProviderSpecifications.groupRange.to : existingTrainer.groupRangeTo,
+      duration: serviceProviderSpecifications.duration !== undefined ? serviceProviderSpecifications.duration : existingTrainer.duration,
+      customDurationHours: serviceProviderSpecifications.customDurationHours !== undefined ? serviceProviderSpecifications.customDurationHours : existingTrainer.customDurationHours,
+      features: Array.isArray(serviceProviderSpecifications.features) ? serviceProviderSpecifications.features : existingTrainer.features,
+      expertise: Array.isArray(req.body.selectedServices) ? req.body.selectedServices.map(s => s.id || s) : existingTrainer.expertise, // Assuming expertise refers to service IDs
+
+      equipment: Array.isArray(serviceProviderEquipments.equipment) ? serviceProviderEquipments.equipment : existingTrainer.equipment,
+      trainingAids: Array.isArray(serviceProviderEquipments.trainingAids) ? serviceProviderEquipments.trainingAids : existingTrainer.trainingAids,
+      protectiveGear: Array.isArray(serviceProviderEquipments.protectiveGear) ? serviceProviderEquipments.protectiveGear : existingTrainer.protectiveGear,
+      accessories: Array.isArray(serviceProviderEquipments.accessories) ? serviceProviderEquipments.accessories : existingTrainer.accessories,
+
+      degree: serviceProfileInformation.degree !== undefined ? serviceProfileInformation.degree : existingTrainer.degree,
+      fieldOfStudy: serviceProfileInformation.fieldOfStudy !== undefined ? serviceProfileInformation.fieldOfStudy : existingTrainer.fieldOfStudy,
+      titles: Array.isArray(serviceProfileInformation.titles) ? serviceProfileInformation.titles : existingTrainer.titles,
+      tennisCertification: serviceProfileInformation.tennisCertification !== undefined ? serviceProfileInformation.tennisCertification : existingTrainer.tennisCertification,
+      languages: Array.isArray(serviceProfileInformation.languages) ? serviceProfileInformation.languages : existingTrainer.languages,
+
+      basePrice: servicePrices.basePrice !== undefined ? servicePrices.basePrice : existingTrainer.basePrice,
+      weekendPrice: servicePrices.weekendPrice !== undefined ? servicePrices.weekendPrice : existingTrainer.weekendPrice,
+      additionalPersonPrice: servicePrices.additionalPersonPrice !== undefined ? servicePrices.additionalPersonPrice : existingTrainer.additionalPersonPrice,
+      discounts: typeof servicePrices.discounts === 'object' ? servicePrices.discounts : existingTrainer.discounts,
+      advancedOrderDiscount: typeof servicePrices.advancedOrderDiscount === 'object' ? servicePrices.advancedOrderDiscount : existingTrainer.advancedOrderDiscount,
+      additionalFees: typeof servicePrices.additionalFees === 'object' ? servicePrices.additionalFees : existingTrainer.additionalFees,
+    });
+
+    // --- Synchronize Selected Services (ServiceTrainer pivot & ServiceDetails) ---
+    const newServiceIds = selectedServices
+      .map(item => (typeof item === 'object' && item !== null ? item.id : item)) // Get ID if object, else assume it's ID
+      .filter(id => !!id);
+
+    const existingPivots = await ServiceTrainer.findAll({ where: { trainerId } });
+    const existingServiceIdsInPivot = existingPivots.map(p => p.serviceId);
+
+    const servicesToRemoveFromPivot = existingServiceIdsInPivot.filter(id => !newServiceIds.includes(id));
+    if (servicesToRemoveFromPivot.length > 0) {
+      await ServiceTrainer.destroy({ where: { trainerId, serviceId: servicesToRemoveFromPivot } });
+      // Optionally, decide if you want to delete ServiceDetails if no other trainer uses them.
+      // For now, we'll leave ServiceDetails intact as they might be shared or referenced elsewhere.
+    }
+
+    for (const serviceItem of selectedServices) {
+      const serviceId = typeof serviceItem === 'object' && serviceItem !== null ? serviceItem.id : serviceItem;
+      if (!serviceId) {
+        console.warn('Skipping a service item due to missing ID:', serviceItem);
+        continue;
+      }
+
+      let processedImageUrlsForDb = [];
+      const serviceImagesFromPayload = typeof serviceItem === 'object' && serviceItem !== null ? serviceItem.images : null;
+
+      if (Array.isArray(serviceImagesFromPayload)) {
+        console.log(`Processing images for serviceId ${serviceId}:`, serviceImagesFromPayload);
+        for (const [idx, imgStr] of serviceImagesFromPayload.entries()) {
+          if (isBase64DataUri(imgStr)) {
+            try {
+              // saveBase64Image MUST return a relative path like '/uploads/filename.ext'
+              const savedPath = saveBase64Image(imgStr, `${existingTrainer.userId}_service_${serviceId}`, idx);
+              if (savedPath) {
+                processedImageUrlsForDb.push(savedPath);
+              } else {
+                console.warn(`saveBase64Image returned null/empty for service ${serviceId}, image index ${idx}`);
+              }
+            } catch (saveError) {
+              console.error(`Error saving image for service ${serviceId}, index ${idx}: ${saveError.message}`);
+              // Optionally, add a placeholder or skip this image
+            }
+          } else if (typeof imgStr === 'string' && imgStr.trim() !== '' && !imgStr.startsWith('assets/placeholder')) {
+            // Assume it's an existing URL/path, ensure it's relative if it's from our own server
+            if (imgStr.startsWith('http://localhost:3000')) { // Or your config.serverUrl
+                 try {
+                    const url = new URL(imgStr);
+                    processedImageUrlsForDb.push(url.pathname); // Store as relative path e.g. /uploads/...
+                 } catch (e) {
+                    processedImageUrlsForDb.push(imgStr); // Fallback
+                 }
+            } else {
+                 processedImageUrlsForDb.push(imgStr); // Already relative or external URL
+            }
+          }
+        }
+        console.log(`Processed images for DB for serviceId ${serviceId}:`, processedImageUrlsForDb);
+      } else {
+        // If images array is not provided in payload for this service, keep existing ones from pivot or details
+        const existingPivot = existingPivots.find(p => p.serviceId === serviceId);
+        if (existingPivot && Array.isArray(existingPivot.serviceImages)) {
+          processedImageUrlsForDb = existingPivot.serviceImages;
+        } else {
+          const existingDetail = await ServiceDetails.findOne({ where: { serviceId } });
+          if (existingDetail && Array.isArray(existingDetail.serviceImage)) {
+            processedImageUrlsForDb = existingDetail.serviceImage;
+          }
+        }
+         console.log(`No new images in payload for serviceId ${serviceId}. Using existing (if any):`, processedImageUrlsForDb);
+      }
+      
+      // Ensure no null or undefined values in the array before saving
+      processedImageUrlsForDb = processedImageUrlsForDb.filter(url => url && typeof url === 'string');
+
+
+      // Upsert ServiceTrainer (pivot table link)
+      const serviceEquipment = (typeof serviceItem === 'object' && serviceItem.equipment) ? serviceItem.equipment : {};
+      const [pivot, wasPivotCreated] = await ServiceTrainer.findOrCreate({
+        where: { serviceId, trainerId },
+        defaults: { serviceImages: processedImageUrlsForDb, equipment: serviceEquipment }
+      });
+      if (!wasPivotCreated) {
+        pivot.serviceImages = processedImageUrlsForDb;
+        pivot.equipment = serviceEquipment; // Always update equipment if provided
+        await pivot.save();
+      }
+
+      // Upsert ServiceDetails (shared details for the service)
+      // Extract details from serviceItem if it's an object, otherwise use general serviceProfileInformation or existing
+      const fullDescription = (typeof serviceItem === 'object' && serviceItem.fullDescription !== undefined) ? serviceItem.fullDescription : serviceProfileInformation.fullDescription;
+      const itemHighlights = (typeof serviceItem === 'object' && serviceItem.highlights !== undefined) ? serviceItem.highlights : serviceProfileInformation.highlights;
+      const whatsIncluded = (typeof serviceItem === 'object' && serviceItem.whatsIncluded !== undefined) ? serviceItem.whatsIncluded : serviceProfileInformation.whatsIncluded;
+      const whatsNotIncluded = (typeof serviceItem === 'object' && serviceItem.whatsNotIncluded !== undefined) ? serviceItem.whatsNotIncluded : serviceProfileInformation.whatsNotIncluded;
+      const recommendations = (typeof serviceItem === 'object' && serviceItem.recommendations !== undefined) ? serviceItem.recommendations : serviceProfileInformation.recommendations;
+      const coachInfo = (typeof serviceItem === 'object' && serviceItem.coachInfo !== undefined) ? serviceItem.coachInfo : serviceProfileInformation.coachInfo;
+
+      const [detail, wasDetailCreated] = await ServiceDetails.findOrCreate({
+        where: { serviceId },
+        defaults: {
+          serviceId,
+          fullDescription: fullDescription || '',
+          highlights: Array.isArray(itemHighlights) ? itemHighlights : [],
+          whatsIncluded: Array.isArray(whatsIncluded) ? whatsIncluded : [],
+          whatsNotIncluded: Array.isArray(whatsNotIncluded) ? whatsNotIncluded : [],
+          recommendations: Array.isArray(recommendations) ? recommendations : [],
+          coachInfo: coachInfo || '',
+          serviceImage: processedImageUrlsForDb // Ensure this service's images are saved here too
+        }
+      });
+      if (!wasDetailCreated) {
+        detail.serviceImage = processedImageUrlsForDb; // Critical: Update serviceImage here
+        if (fullDescription !== undefined) detail.fullDescription = fullDescription;
+        if (itemHighlights !== undefined) detail.highlights = Array.isArray(itemHighlights) ? itemHighlights : detail.highlights;
+        if (whatsIncluded !== undefined) detail.whatsIncluded = Array.isArray(whatsIncluded) ? whatsIncluded : detail.whatsIncluded;
+        if (whatsNotIncluded !== undefined) detail.whatsNotIncluded = Array.isArray(whatsNotIncluded) ? whatsNotIncluded : detail.whatsNotIncluded;
+        if (recommendations !== undefined) detail.recommendations = Array.isArray(recommendations) ? recommendations : detail.recommendations;
+        if (coachInfo !== undefined) detail.coachInfo = coachInfo;
+        await detail.save();
+      }
+    }
+
+    const finalTrainerData = await Trainer.findByPk(trainerId, {
+        include: [
+             { model: Category, attributes: ['id', 'name'] },
+             { model: SubCategory, attributes: ['id', 'name'], include: [{ model: Category, attributes: ['id', 'name'] }] },
+             {
+               model: Service,
+               attributes: ['id', 'name', 'description', 'image', 'duration', 'hourlyRate', 'level', 'type', 'subCategoryId'],
+               through: { attributes: ['serviceImages', 'equipment'] }, // Include from ServiceTrainer
+               include: [
+                 { model: ServiceDetails, attributes: ['serviceImage', 'fullDescription', 'highlights', 'whatsIncluded', 'whatsNotIncluded', 'recommendations', 'coachInfo'] },
+                 { model: SubCategory, attributes: ['id', 'name'], include: [{ model: Category, attributes: ['id', 'name'] }] }
+               ]
+             }
+        ]
+    });
+
+
+    return res.status(200).json({
+      message: 'Trainer and associated service details updated successfully.',
+      trainer: finalTrainerData // Send back the fully updated trainer data
+    });
+
+  } catch (err) {
+    console.error('updateTrainerFull error:', err, err.stack);
+    return res.status(500).json({ error: 'Failed to fully update trainer.', details: err.message });
+  }
+};
 
 
 exports.updateTrainer = async (req, res) => {
@@ -1074,6 +1353,8 @@ exports.updateTrainer = async (req, res) => {
     // Update trainer data
     await trainer.update({
       ...updates,
+      trainerDescription: updates.trainerDescription,
+
       groupRangeFrom: updates.groupRange?.from || null,
       groupRangeTo: updates.groupRange?.to || null
     });
@@ -1085,6 +1366,105 @@ exports.updateTrainer = async (req, res) => {
   }
 };
 
+exports.updateTrainerLanguages = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { languages = [] } = req.body;          // expects array of strings
+
+    const trainer = await Trainer.findByPk(id);
+    if (!trainer) return res.status(404).json({ error: 'Trainer not found' });
+
+    await trainer.update({ languages });
+    res.json({ message: 'Languages updated', trainer });
+  } catch (err) {
+    console.error('updateTrainerLanguages:', err);
+    res.status(500).json({ error: 'Server error updating languages' });
+  }
+};
+
+/**
+ * PATCH /api/trainers/:id/field-of-study
+ * { fieldOfStudy: "Kinesiology" }
+ */
+exports.updateTrainerFieldOfStudy = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { fieldOfStudy = '' } = req.body;
+
+    const trainer = await Trainer.findByPk(id);
+    if (!trainer) return res.status(404).json({ error: 'Trainer not found' });
+
+    await trainer.update({ fieldOfStudy });
+    res.json({ message: 'Field of study updated', trainer });
+  } catch (err) {
+    console.error('updateTrainerFieldOfStudy:', err);
+    res.status(500).json({ error: 'Server error updating field of study' });
+  }
+};
+
+/**
+ * PATCH /api/trainers/:id/degree
+ * { degree: "Bachelor's Degree" }
+ */
+exports.updateTrainerDegree = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { degree = '' } = req.body;
+
+    const trainer = await Trainer.findByPk(id);
+    if (!trainer) return res.status(404).json({ error: 'Trainer not found' });
+
+    await trainer.update({ degree });
+    res.json({ message: 'Degree updated', trainer });
+  } catch (err) {
+    console.error('updateTrainerDegree:', err);
+    res.status(500).json({ error: 'Server error updating degree' });
+  }
+};
+
+/**
+ * PATCH /api/trainers/:id/tennis-cert
+ * { tennisCertification: "USPTA" }
+ */
+exports.updateTrainerTennisCert = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { tennisCertification = '' } = req.body;
+
+    const trainer = await Trainer.findByPk(id);
+    if (!trainer) return res.status(404).json({ error: 'Trainer not found' });
+
+    await trainer.update({ tennisCertification });
+    res.json({ message: 'Tennis certification updated', trainer });
+  } catch (err) {
+    console.error('updateTrainerTennisCert:', err);
+    res.status(500).json({ error: 'Server error updating tennis certification' });
+  }
+};
+
+/**
+ * PATCH /api/trainers/:id/distance
+ * { distance: 25 }   // kilometres or miles – your choice
+ */
+exports.updateTrainerDistance = async (req, res) => {
+  try {
+    const { id } = req.params;
+    let   { distance } = req.body;
+
+    distance = Number(distance);
+    if (Number.isNaN(distance) || distance < 0)
+      return res.status(400).json({ error: 'Distance must be a positive number' });
+
+    const trainer = await Trainer.findByPk(id);
+    if (!trainer) return res.status(404).json({ error: 'Trainer not found' });
+
+    await trainer.update({ distance });
+    res.json({ message: 'Distance updated', trainer });
+  } catch (err) {
+    console.error('updateTrainerDistance:', err);
+    res.status(500).json({ error: 'Server error updating distance' });
+  }
+};
 
 exports.deleteTrainer = async (req, res) => {
   try {
@@ -1104,39 +1484,113 @@ exports.deleteTrainer = async (req, res) => {
 };
 
 
+// controllers/trainerController.js
+
 exports.getTrainerByUserId = async (req, res) => {
   try {
     const trainer = await Trainer.findOne({
       where: { userId: req.params.userId },
       include: [
-        { model: Category,    attributes: ['name'] },
-        { model: SubCategory, attributes: ['name'] }
+        // 1) Trainer → Category (for categoryName)
+        { model: Category, attributes: ['id', 'name'] },
+        // 2) Trainer → SubCategory (for subcategoryName)
+        { model: SubCategory, attributes: ['id', 'name'], include: [{ model: Category, attributes: ['id', 'name'] }] },
+        // 3) Trainer → Service (through ServiceTrainer), and for each Service include its ServiceDetails and its own SubCategory→Category
+        {
+          model: Service,
+          attributes: [
+            'id',
+            'name',
+            'description',
+            'image',
+            'duration',
+            'hourlyRate',
+            'level',
+            'type',
+            'subCategoryId'
+          ],
+          through: { attributes: [] }, // omit pivot columns
+          include: [
+            {
+              model: ServiceDetails,
+              attributes: [
+                'serviceImage',
+                'fullDescription',
+                'highlights',
+                'whatsIncluded',
+                'whatsNotIncluded',
+                'recommendations',
+                'coachInfo'
+              ]
+            },
+            {
+              model: SubCategory,
+              attributes: ['id', 'name'],
+              include: [{ model: Category, attributes: ['id', 'name'] }]
+            }
+          ]
+        }
       ]
     });
+
     if (!trainer) {
       return res.status(404).json({ error: 'Trainer not found for this user' });
     }
 
+    // Convert to plain JSON object
     const t = trainer.get({ plain: true });
+
+    // Build a structured "services" array with nested details
+    const services = (t.Services || []).map((service) => ({
+      serviceId:          service.id,
+      name:               service.name,
+      description:        service.description,
+      image:              service.image,
+      duration:           service.duration,
+      hourlyRate:         service.hourlyRate,
+      level:              service.level,
+      type:               service.type,
+      subCategoryId:      service.subCategoryId,
+      subCategoryName:    service.SubCategory?.name || null,
+      categoryId:         service.SubCategory?.Category?.id || null,
+      categoryName:       service.SubCategory?.Category?.name || null,
+      // pull service-level gallery from ServiceDetails
+      serviceImage:       service.ServiceDetail?.serviceImage || [],
+      fullDescription:    service.ServiceDetail?.fullDescription || '',
+      highlights:         service.ServiceDetail?.highlights || [],
+      whatsIncluded:      service.ServiceDetail?.whatsIncluded || [],
+      whatsNotIncluded:   service.ServiceDetail?.whatsNotIncluded || [],
+      recommendations:    service.ServiceDetail?.recommendations || [],
+      coachInfo:          service.ServiceDetail?.coachInfo || ''
+    }));
+
     return res.status(200).json({
-      trainerId:       t.id,
-      userId:          t.userId,
-      categoryId:      t.categoryId,
-      subcategoryId:   t.subcategoryId,
-      categoryName:    t.Category?.name,
-      subcategoryName: t.SubCategory?.name,
+      trainerId:              t.id,
+      userId:                 t.userId,
+      categoryId:             t.categoryId,
+      subcategoryId:          t.subcategoryId,
+      categoryName:           t.Category?.name || null,
+      subcategoryName:        t.SubCategory?.name || null,
+
+      style:                  t.style,
+      availability:           t.availability,
+      typeOfServiceProvider:  t.typeOfServiceProvider,
+      providerCategory:       t.providerCategory,
+      certificationStatus:    t.certificationStatus,
 
       // core fields
       name:                   t.name,
       surname:                t.surname,
       description:            t.description,
+      trainerDescription:     t.trainerDescription,
+
       avatar:                 t.avatar,
-      userRating:            t.userRating,
+      userRating:             t.userRating,
       specialization:         t.specialization,
       level:                  t.level,
       hourlyRate:             t.hourlyRate,
       gender:                 t.gender,
-      distance:          t.distance,          // ← add this
+      distance:               t.distance,
 
       yearsOfExperience:      t.yearsOfExperience,
       ageGroup:               t.ageGroup,
@@ -1149,10 +1603,10 @@ exports.getTrainerByUserId = async (req, res) => {
 
       // serviceProviderEquipments now included:
       serviceProviderEquipments: {
-        equipment:      t.equipment,
-        trainingAids:   t.trainingAids,
-        protectiveGear: t.protectiveGear,
-        accessories:    t.accessories
+        equipment:      t.equipment || [],
+        trainingAids:   t.trainingAids || [],
+        protectiveGear: t.protectiveGear || [],
+        accessories:    t.accessories || []
       },
 
       // profile & pricing
@@ -1172,15 +1626,19 @@ exports.getTrainerByUserId = async (req, res) => {
       advancedOrderDiscount:  t.advancedOrderDiscount,
       additionalFees:         t.additionalFees,
 
+      // newly added services array
+      services,
+
       createdAt:              t.createdAt,
       updatedAt:              t.updatedAt
     });
 
   } catch (error) {
     console.error('Error fetching trainer by userId:', error);
-    res.status(500).json({ error: 'Server error while fetching trainer' });
+    return res.status(500).json({ error: 'Server error while fetching trainer' });
   }
 };
+
 
 exports.findTrainerByUserId = async (req, res) => {
   try {
@@ -1198,7 +1656,8 @@ exports.findTrainerByUserId = async (req, res) => {
       categoryId:    trainer.categoryId,     // 🆕
       subcategoryId: trainer.subcategoryId,  // 🆕
       name: trainer.name,
-      surname: trainer.surname
+      surname: trainer.surname,
+      
     });
   } catch (error) {
     console.error('Error in findTrainerByUserId:', error);

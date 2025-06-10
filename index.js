@@ -125,7 +125,7 @@ const googlePlacesRoutes = require('./routes/googlePlacesRoutes');
 // Initialize Express app
 const app = express();
 const PORT = process.env.PORT || 3000;
-const BASE_URL = `http://localhost:${PORT}`;
+const BASE_URL = `https://srv687018.hstgr.cloud:${PORT}`;
 
 // Ensure the uploads directory exists
 const uploadDir = path.join(__dirname, 'uploads');
@@ -161,7 +161,7 @@ app.use(
       return callback(new Error(`CORS not allowed from origin: ${origin}`));
     },
     credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    methods: ['GET', 'POST', 'PUT', 'DELETE','PATCH', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
   })
 );

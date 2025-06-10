@@ -1024,3 +1024,36 @@ exports.getServiceInfo = async (req, res) => {
     res.status(500).json({ error: 'Failed to fetch service info.' });
   }
 };
+
+
+
+// GET /api/services/category/:subCategoryId/all-no-filter
+exports.getServicesBySubCategoryAll = async (req, res) => {
+  try {
+    const { subCategoryId } = req.params;
+
+    const services = await Service.findAll({
+      where: { subCategoryId },           // 🚫 no level / other filters
+      include: [
+        { model: Trainer },               // pull assigned trainers
+        {
+          model: ServiceDetails,          // pull long-form info
+          attributes: [
+            'fullDescription',
+            'highlights',
+            'whatsIncluded',
+            'whatsNotIncluded',
+            'recommendations',
+            'coachInfo',
+            'serviceImage'
+          ]
+        }
+      ]
+    });
+
+    return res.status(200).json(services);
+  } catch (err) {
+    console.error('getServicesBySubCategoryAll:', err);
+    return res.status(500).json({ error: err.message });
+  }
+};

@@ -20,6 +20,11 @@ router.get('/categories/:categoryId/subcategories/:subCategoryId', serviceContro
 router.get('/:id', serviceController.getServiceById); // Place this last
 router.get('/:serviceId/similar', serviceController.getSimilarServices);
 
+router.get(
+    '/category/:subCategoryId/all-no-filter',
+    serviceController.getServicesBySubCategoryAll
+  );
+
 // New route: Get all services provided by a specific trainer
 router.get('/trainer/:trainerId', serviceController.getServicesByTrainer);
 

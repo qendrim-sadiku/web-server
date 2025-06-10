@@ -291,6 +291,11 @@ const Trainer = sequelize.define('Trainer', {
       this.setDataValue('protectiveGear', JSON.stringify(v || []));
     }
   },
+  trainerDescription: {
+    type: DataTypes.TEXT,
+    allowNull: true
+  },
+  
   accessories: {
     type: DataTypes.TEXT,
     allowNull: true,
