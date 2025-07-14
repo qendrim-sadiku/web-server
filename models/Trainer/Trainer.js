@@ -211,6 +211,16 @@ const Trainer = sequelize.define('Trainer', {
       this.setDataValue('features', JSON.stringify(val));
     }
   },
+   autoAcceptRequests: {
+  type: DataTypes.BOOLEAN,
+   allowNull: false,
+   defaultValue: false,
+ },
+ vacationMode: {
+   type: DataTypes.BOOLEAN,
+   allowNull: false,
+   defaultValue: false,
+ },
   expertise: {
     type: DataTypes.TEXT,
     allowNull: true,

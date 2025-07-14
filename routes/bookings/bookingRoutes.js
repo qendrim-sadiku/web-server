@@ -40,6 +40,11 @@ router.get('/bookings/user/:userId/filter', bookingController.getFilteredBooking
 
 router.get('/bookings/user/:userId/paginated-filter', bookingController.getPaginatedFilteredBookingsOfUser);
 
+router.get(
+  '/bookings/trainer/:trainerId/all',
+  bookingController.getTrainerBookingsCategorized
+);
+
 router.post('/bookings/user/:userId/dates', bookingController.getUserBookingsByDates);
 // Route to get booking counts for multiple services
 router.post('/bookings/counts', bookingController.getBookingCountsForServices);

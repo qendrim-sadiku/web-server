@@ -1423,21 +1423,57 @@ function normalizeCategory(category) {
 
 // Cancel a booking
 exports.cancelBooking = async (req, res) => {
+  const transaction = await sequelize.transaction();
   try {
     const { id } = req.params; // Extract the booking ID from the request parameters
 
-    // Find the booking by its ID
-    const booking = await Booking.findByPk(id);
+    // Find the booking by its ID within the transaction
+    const booking = await Booking.findByPk(id, { transaction });
     if (!booking) {
-      return res.status(404).json({ message: 'Booking not found' }); // Return 404 if the booking is not found
+      await transaction.rollback();
+      return res.status(404).json({ message: 'Booking not found' });
     }
+
+    // If the booking is already canceled, no action is needed
+    if (booking.status === 'canceled') {
+      await transaction.rollback();
+      return res.status(400).json({ message: 'This booking has already been canceled.' });
+    }
+    
+    // If it is a group session booking, decrement the enrollment
+    if (booking.groupSessionId) {
+      const groupSession = await GroupSession.findByPk(booking.groupSessionId, { transaction });
+      if (groupSession) {
+        // Decrement the current enrollment
+        await groupSession.decrement('currentEnrollment', { by: 1, transaction });
+        
+        // Optionally, if the session was full ('completed'), set it back to 'active'
+        if (groupSession.status === 'completed') {
+            groupSession.status = 'active';
+            await groupSession.save({ transaction });
+        }
+      }
+    }
+
+    // For all bookings, delete the associated BookingDate entries to free up the schedule
+    await BookingDate.destroy({
+      where: {
+        bookingId: id,
+      },
+      transaction,
+    });
 
     // Update the status of the booking to 'canceled'
     booking.status = 'canceled';
-    await booking.save(); // Save the updated booking
+    await booking.save({ transaction }); // Save the updated booking
+
+    // Commit all changes if everything was successful
+    await transaction.commit();
 
     res.status(200).json({ message: 'Booking canceled successfully' }); // Return success message
   } catch (error) {
+    // If any step fails, roll back all database changes
+    await transaction.rollback();
     res.status(500).json({ error: error.message }); // Handle any errors that occur during the process
   }
 };
@@ -1792,5 +1828,96 @@ exports.rateBooking = async (req, res) => {
     });
   } catch (error) {
     res.status(500).json({ error: error.message });
+  }
+};
+
+// GET /bookings/trainer/:trainerId/all
+exports.getTrainerBookingsCategorized = async (req, res) => {
+  try {
+    const { trainerId } = req.params;
+    const now = new Date();
+
+    // 1) fetch all bookings for this trainer with the same includes as user endpoint
+    const bookings = await Booking.findAll({
+      where: { trainerId },
+      order: [['createdAt', 'DESC']],
+      distinct: true,
+      include: [
+        { model: Participant },
+        {
+          model: BookingDate,
+          attributes: ['date', 'startTime', 'endTime', 'createdAt']
+        },
+        {
+          model: Service,
+          attributes: ['id','name','description','image','duration','hourlyRate','level'],
+          include: [
+            {
+              model: ServiceDetails,
+              attributes: [
+                'fullDescription',
+                'highlights',
+                'whatsIncluded',
+                'whatsNotIncluded',
+                'recommendations',
+                'coachInfo'
+              ],
+            },
+            {
+              model: Trainer,
+              attributes: ['id','name','surname','avatar','hourlyRate','userRating'],
+            },
+            {
+              model: SubCategory,
+              attributes: ['id','name'],
+              include: [
+                { model: Category, attributes: ['id','name'] }
+              ],
+            }
+          ],
+        },
+      ],
+    });
+
+    // 2) fetch group-session metadata in one go
+    const groupSessionIds = bookings
+      .map(b => b.groupSessionId)
+      .filter(id => id != null);
+    const groupSessions = await GroupSession.findAll({
+      where: { id: groupSessionIds },
+      attributes: ['id','maxGroupSize','currentEnrollment']
+    });
+    const sessionMap = groupSessions.reduce((acc, s) => {
+      acc[s.id] = s;
+      return acc;
+    }, {});
+
+    // 3) attach groupSessionData & latestBookingDate
+    const enriched = bookings.map(b => {
+      const json = b.toJSON();
+      json.groupSessionData = sessionMap[b.groupSessionId] || null;
+      json.latestBookingDate = json.BookingDates
+        .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))[0];
+      return json;
+    });
+
+    // 4) bucket into upcoming / past / canceled
+    const categorized = { upcoming: [], past: [], canceled: [] };
+    for (const booking of enriched) {
+      if (booking.status === 'canceled') {
+        categorized.canceled.push(booking);
+      } else {
+        const endTs = new Date(
+          `${booking.latestBookingDate.date}T${booking.latestBookingDate.endTime}`
+        );
+        if (endTs > now) categorized.upcoming.push(booking);
+        else categorized.past.push(booking);
+      }
+    }
+
+    return res.status(200).json(categorized);
+  } catch (error) {
+    console.error('getTrainerBookingsCategorized error:', error);
+    return res.status(500).json({ error: 'Failed to fetch trainer bookings.' });
   }
 };

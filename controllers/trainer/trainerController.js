@@ -8,7 +8,7 @@ const saveBase64Image = require('../../util/saveBase64Image');
 const ServiceDetails     = require('../../models/Services/ServiceDetails');
 const Category = require('../../models/Category/Category');
 const SubCategory = require('../../models/Category/SubCategory');
-
+const availabilityService = require('../../services/availabilityService');
 
 
 
@@ -82,33 +82,105 @@ exports.getAllTrainers = async (req, res) => {
 };
 
 // Get trainer details along with availability, reviews, and last booked information
+// exports.getTrainerDetails = async (req, res) => {
+//   const { id } = req.params;
+//   const { date } = req.query;
+
+//   const today = new Date();
+//   const selectedDate = date ? date : today.toISOString().split('T')[0];
+
+//   const tomorrow = new Date();
+//   tomorrow.setDate(today.getDate() + 1);
+//   const tomorrowDate = tomorrow.toISOString().split('T')[0];
+
+//   try {
+//     const trainer = await Trainer.findByPk(id, {
+//       include: [
+//         {
+//           model: Review,
+//           include: [{ model: User, attributes: ['username', 'name', 'surname', 'avatar'] }],
+          
+//         },
+//         {
+//           model: Booking,
+//           include: [
+//             {
+//               model: BookingDate,
+//               attributes: ['date', 'startTime', 'endTime'],
+//             },
+//           ],
+//         },
+//       ],
+//     });
+
+//     if (!trainer) {
+//       return res.status(404).json({ message: 'Trainer not found' });
+//     }
+
+//     // Find the last booking by sorting booking dates in descending order
+//     const lastBooking = await Booking.findOne({
+//       where: { trainerId: id },
+//       order: [['createdAt', 'DESC']], // Assuming `createdAt` stores the booking creation date
+//       include: [
+//         {
+//           model: BookingDate,
+//           attributes: ['date', 'startTime', 'endTime'],
+//         },
+//       ],
+//     });
+
+//     const reviews = trainer.Reviews || [];
+//     const averageRating = reviews.length > 0
+//       ? reviews.reduce((sum, review) => sum + review.rating, 0) / reviews.length
+//       : 0;
+
+//     const totalBookings = trainer.Bookings.length;
+
+//     let availabilityToday = generateHourlySlots('08:00', '20:00');
+//     let availabilityTomorrow = generateHourlySlots('08:00', '20:00');
+
+//     trainer.Bookings.forEach(booking => {
+//       booking.BookingDates.forEach(bookingDate => {
+//         if (bookingDate.date === selectedDate) {
+//           availabilityToday = removeBookedSlots(availabilityToday, bookingDate.startTime, bookingDate.endTime);
+//         }
+//         if (bookingDate.date === tomorrowDate) {
+//           availabilityTomorrow = removeBookedSlots(availabilityTomorrow, bookingDate.startTime, bookingDate.endTime);
+//         }
+//       });
+//     });
+
+//     res.status(200).json({
+//       trainer: trainer.get({ plain: true }),
+//       averageRating,
+//       totalBookings,
+//       reviews: trainer.Reviews,
+//       availabilityToday,
+//       availabilityTomorrow,
+//       lastBooking, // Include the last booking information
+//     });
+//   } catch (error) {
+//     res.status(500).json({ error: error.message });
+//   }
+// };
+
+
+// ✅ FINAL, FIXED VERSION
+// ✅ FINAL, CORRECTED VERSION
 exports.getTrainerDetails = async (req, res) => {
-  const { id } = req.params;
-  const { date } = req.query;
-
-  const today = new Date();
-  const selectedDate = date ? date : today.toISOString().split('T')[0];
-
-  const tomorrow = new Date();
-  tomorrow.setDate(today.getDate() + 1);
-  const tomorrowDate = tomorrow.toISOString().split('T')[0];
-
   try {
-    const trainer = await Trainer.findByPk(id, {
+    const trainerId = Number(req.params.id);
+
+    // This is the part that had the error. It is now fixed.
+    const trainer = await Trainer.findByPk(trainerId, {
       include: [
         {
           model: Review,
           include: [{ model: User, attributes: ['username', 'name', 'surname', 'avatar'] }],
-          
         },
         {
           model: Booking,
-          include: [
-            {
-              model: BookingDate,
-              attributes: ['date', 'startTime', 'endTime'],
-            },
-          ],
+          attributes: ['id'], // ✅ FIX: We only need the 'id' to get the total count.
         },
       ],
     });
@@ -117,50 +189,50 @@ exports.getTrainerDetails = async (req, res) => {
       return res.status(404).json({ message: 'Trainer not found' });
     }
 
-    // Find the last booking by sorting booking dates in descending order
     const lastBooking = await Booking.findOne({
-      where: { trainerId: id },
-      order: [['createdAt', 'DESC']], // Assuming `createdAt` stores the booking creation date
-      include: [
-        {
-          model: BookingDate,
-          attributes: ['date', 'startTime', 'endTime'],
-        },
-      ],
+      where: { trainerId: trainerId },
+      order: [['createdAt', 'DESC']],
+      include: [{ model: BookingDate, attributes: ['date', 'startTime', 'endTime'] }],
     });
 
     const reviews = trainer.Reviews || [];
     const averageRating = reviews.length > 0
       ? reviews.reduce((sum, review) => sum + review.rating, 0) / reviews.length
       : 0;
+    const totalBookings = trainer.Bookings ? trainer.Bookings.length : 0;
 
-    const totalBookings = trainer.Bookings.length;
+    // This part is correct and uses your service.
+    const today = new Date();
+    const todayIso = today.toISOString().split('T')[0];
+    const tomorrow = new Date();
+    tomorrow.setDate(today.getDate() + 1);
+    const tomorrowDate = tomorrow.toISOString().split('T')[0];
 
-    let availabilityToday = generateHourlySlots('08:00', '20:00');
-    let availabilityTomorrow = generateHourlySlots('08:00', '20:00');
+    const availabilityTodayRaw = await availabilityService.getAvailableSlotsForDay(trainerId, todayIso);
+    const availabilityTomorrow = await availabilityService.getAvailableSlotsForDay(trainerId, tomorrowDate);
 
-    trainer.Bookings.forEach(booking => {
-      booking.BookingDates.forEach(bookingDate => {
-        if (bookingDate.date === selectedDate) {
-          availabilityToday = removeBookedSlots(availabilityToday, bookingDate.startTime, bookingDate.endTime);
-        }
-        if (bookingDate.date === tomorrowDate) {
-          availabilityTomorrow = removeBookedSlots(availabilityTomorrow, bookingDate.startTime, bookingDate.endTime);
-        }
-      });
+    // Filter past slots for today
+    const now = new Date();
+    const currentHour = now.getHours();
+    const currentMinutes = now.getMinutes();
+    const availabilityToday = availabilityTodayRaw.filter(slot => {
+        const [slotHour, slotMinutes] = slot.startTime.split(':').map(Number);
+        return slotHour > currentHour || (slotHour === currentHour && slotMinutes >= currentMinutes);
     });
 
     res.status(200).json({
       trainer: trainer.get({ plain: true }),
       averageRating,
       totalBookings,
-      reviews: trainer.Reviews,
+      reviews,
       availabilityToday,
       availabilityTomorrow,
-      lastBooking, // Include the last booking information
+      lastBooking,
     });
+
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error('getTrainerDetails Error:', error);
+    res.status(500).json({ error: 'Server error while fetching trainer details.' });
   }
 };
 
@@ -194,27 +266,17 @@ exports.addReview = async (req, res) => {
 };
 
 // Cancel a booking
+// ✅ FINAL, FIXED VERSION
 exports.cancelBooking = async (req, res) => {
   const { id } = req.params;
-
   try {
-    const booking = await Booking.findByPk(id, {
-      include: [{
-        model: BookingDate,
-        attributes: ['date', 'startTime', 'endTime'],
-      }]
-    });
-
+    const booking = await Booking.findByPk(id);
     if (!booking) {
       return res.status(404).json({ message: 'Booking not found' });
     }
-
     booking.status = 'canceled';
     await booking.save();
-
-    const trainerId = booking.trainerId;
-    await recalculateTrainerAvailability(trainerId);
-
+    // The broken recalculate function call is now removed.
     res.status(200).json({ message: 'Booking canceled successfully' });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -340,56 +402,101 @@ function filterPastSlots(availability) {
 }
 
 // Get trainer availability with date filtering
-exports.getTrainerAvailability = async (req, res) => {
-  const { id } = req.params;
-  const { date } = req.query;
+// exports.getTrainerAvailability = async (req, res) => {
+//   const { id } = req.params;
+//   const { date } = req.query;
 
-  const today = new Date();
-  const selectedDate = date ? date : today.toISOString().split('T')[0];
+//   const today = new Date();
+//   const selectedDate = date ? date : today.toISOString().split('T')[0];
  
-  const tomorrow = new Date();
-  tomorrow.setDate(today.getDate() + 1);
-  const tomorrowDate = tomorrow.toISOString().split('T')[0];
+//   const tomorrow = new Date();
+//   tomorrow.setDate(today.getDate() + 1);
+//   const tomorrowDate = tomorrow.toISOString().split('T')[0];
 
+//   try {
+//     const trainer = await Trainer.findByPk(id, {
+//       include: [
+//         {
+//           model: Booking,
+//           include: [
+//             {
+//               model: BookingDate,
+//               attributes: ['date', 'startTime', 'endTime'],
+//             },
+//           ],
+//         },
+//       ],
+//     });
+
+//     if (!trainer) {
+//       return res.status(404).json({ message: 'Trainer not found' });
+//     }
+
+//     let availabilityToday = generateHourlySlots('08:00', '20:00');
+//     let availabilityTomorrow = generateHourlySlots('08:00', '20:00');
+//     let availabilitySelectedDate = generateHourlySlots('08:00', '20:00');
+
+//     if (selectedDate === today.toISOString().split('T')[0]) {
+//       availabilityToday = filterPastSlots(availabilityToday);
+//     }
+
+//     trainer.Bookings.forEach(booking => {
+//       booking.BookingDates.forEach(bookingDate => {
+//         if (bookingDate.date === today.toISOString().split('T')[0]) {
+//           availabilityToday = removeBookedSlots(availabilityToday, bookingDate.startTime, bookingDate.endTime);
+//         }
+//         if (bookingDate.date === tomorrowDate) {
+//           availabilityTomorrow = removeBookedSlots(availabilityTomorrow, bookingDate.startTime, bookingDate.endTime);
+//         }
+//         if (bookingDate.date === selectedDate) {
+//           availabilitySelectedDate = removeBookedSlots(availabilitySelectedDate, bookingDate.startTime, bookingDate.endTime);
+//         }
+//       });
+//     });
+
+//     res.status(200).json({
+//       availabilityToday,
+//       availabilityTomorrow,
+//       availabilitySelectedDate,
+//     });
+//   } catch (error) {
+//     res.status(500).json({ error: error.message });
+//   }
+// };
+
+// ✅ REFACTORED: Get trainer availability with date filtering
+// ✅ FINAL, FIXED VERSION
+exports.getTrainerAvailability = async (req, res) => {
   try {
-    const trainer = await Trainer.findByPk(id, {
-      include: [
-        {
-          model: Booking,
-          include: [
-            {
-              model: BookingDate,
-              attributes: ['date', 'startTime', 'endTime'],
-            },
-          ],
-        },
-      ],
-    });
+    const trainerId = Number(req.params.id);
+    const { date } = req.query;
 
-    if (!trainer) {
-      return res.status(404).json({ message: 'Trainer not found' });
+    const today = new Date();
+    const todayIso = today.toISOString().split('T')[0];
+    const selectedDate = date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : todayIso;
+
+    const tomorrow = new Date();
+    tomorrow.setDate(today.getDate() + 1);
+    const tomorrowDate = tomorrow.toISOString().split('T')[0];
+
+    const availabilityTodaySlots = await availabilityService.getAvailableSlotsForDay(trainerId, todayIso);
+    const availabilityTomorrow = await availabilityService.getAvailableSlotsForDay(trainerId, tomorrowDate);
+
+    let availabilitySelectedDate;
+    if (selectedDate === todayIso) {
+      availabilitySelectedDate = availabilityTodaySlots;
+    } else if (selectedDate === tomorrowDate) {
+      availabilitySelectedDate = availabilityTomorrow;
+    } else {
+      availabilitySelectedDate = await availabilityService.getAvailableSlotsForDay(trainerId, selectedDate);
     }
 
-    let availabilityToday = generateHourlySlots('08:00', '20:00');
-    let availabilityTomorrow = generateHourlySlots('08:00', '20:00');
-    let availabilitySelectedDate = generateHourlySlots('08:00', '20:00');
-
-    if (selectedDate === today.toISOString().split('T')[0]) {
-      availabilityToday = filterPastSlots(availabilityToday);
-    }
-
-    trainer.Bookings.forEach(booking => {
-      booking.BookingDates.forEach(bookingDate => {
-        if (bookingDate.date === today.toISOString().split('T')[0]) {
-          availabilityToday = removeBookedSlots(availabilityToday, bookingDate.startTime, bookingDate.endTime);
-        }
-        if (bookingDate.date === tomorrowDate) {
-          availabilityTomorrow = removeBookedSlots(availabilityTomorrow, bookingDate.startTime, bookingDate.endTime);
-        }
-        if (bookingDate.date === selectedDate) {
-          availabilitySelectedDate = removeBookedSlots(availabilitySelectedDate, bookingDate.startTime, bookingDate.endTime);
-        }
-      });
+    const now = new Date();
+    const currentHour = now.getHours();
+    const currentMinutes = now.getMinutes();
+    const availabilityToday = availabilityTodaySlots.filter(slot => {
+      const [slotHour, slotMinutes] = slot.startTime.split(':').map(Number);
+      return slotHour > currentHour || (slotHour === currentHour && slotMinutes >= currentMinutes);
     });
 
     res.status(200).json({
@@ -398,504 +505,45 @@ exports.getTrainerAvailability = async (req, res) => {
       availabilitySelectedDate,
     });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error('getTrainerAvailability Error:', error);
+    res.status(500).json({ error: 'An error occurred while fetching trainer availability.' });
   }
 };
 
-
+// ✅ FINAL, FIXED VERSION
 exports.getMultipleTrainersAvailability = async (req, res) => {
-
-  
   const { trainerIds, date } = req.body;
 
-  if (!date) {
-    return res.status(400).json({ message: 'Date is required' });
+  if (!date || !Array.isArray(trainerIds) || trainerIds.length === 0) {
+    return res.status(400).json({ message: 'A valid date and a non-empty array of trainerIds are required' });
   }
 
   try {
     const trainers = await Trainer.findAll({
       where: { id: trainerIds },
-      include: [
-        {
-          model: Booking,
-          include: [
-            {
-              model: BookingDate,
-              attributes: ['date', 'startTime', 'endTime'],
-            },
-          ],
-        },
-      ],
+      attributes: ['id', 'name', 'surname'],
     });
 
-    if (!trainers || trainers.length === 0) {
-      return res.status(404).json({ message: 'No trainers found' });
-    }
-
-    const availability = {};
-
-    trainers.forEach(trainer => {
-      // Generate all time slots for the day with AM/PM
-      const generateHourlySlots = (start, end) => {
-        const slots = [];
-        let [startHours, startMinutes] = start.split(':').map(Number);
-        let [endHours] = end.split(':').map(Number);
-
-        while (startHours < endHours) {
-          const startTime = `${(startHours % 12 || 12)}:${startMinutes
-            .toString()
-            .padStart(2, '0')} ${startHours >= 12 ? 'PM' : 'AM'}`;
-          const endTime = `${((startHours + 1) % 12 || 12)}:${startMinutes
-            .toString()
-            .padStart(2, '0')} ${startHours + 1 >= 12 ? 'PM' : 'AM'}`;
-
-          slots.push({ startTime, endTime });
-          startHours++;
-        }
-
-        return slots;
-      };
-
-      let availabilitySelectedDate = generateHourlySlots('08:00', '20:00').map(slot => ({
-        startTime: slot.startTime,
-        endTime: slot.endTime,
-        isAvailable: true, // Default to true
-      }));
-
-      // Mark unavailable slots
-      trainer.Bookings.forEach(booking => {
-        booking.BookingDates.forEach(bookingDate => {
-          if (bookingDate.date === date) {
-            availabilitySelectedDate = availabilitySelectedDate.map(slot => {
-              const [slotStartHours, slotStartMinutes] = slot.startTime.split(/[: ]/).map(Number);
-              const [slotEndHours, slotEndMinutes] = slot.endTime.split(/[: ]/).map(Number);
-              const [bookedStartHours, bookedStartMinutes] = bookingDate.startTime
-                .split(':')
-                .map(Number);
-              const [bookedEndHours, bookedEndMinutes] = bookingDate.endTime.split(':').map(Number);
-
-              const slotStartTime = new Date().setHours(
-                slotStartHours + (slot.startTime.includes('PM') && slotStartHours !== 12 ? 12 : 0),
-                slotStartMinutes
-              );
-              const slotEndTime = new Date().setHours(
-                slotEndHours + (slot.endTime.includes('PM') && slotEndHours !== 12 ? 12 : 0),
-                slotEndMinutes
-              );
-              const bookedStartTime = new Date().setHours(bookedStartHours, bookedStartMinutes);
-              const bookedEndTime = new Date().setHours(bookedEndHours, bookedEndMinutes);
-
-              if (slotStartTime < bookedEndTime && slotEndTime > bookedStartTime) {
-                return { ...slot, isAvailable: false };
-              }
-
-              return slot;
-            });
-          }
-        });
-      });
-
-      // Include trainer's availability
-      availability[trainer.id] = {
+    const availabilityByTrainer = {};
+    for (const trainer of trainers) {
+      const availableSlots = await availabilityService.getAvailableSlotsForDay(trainer.id, date);
+      availabilityByTrainer[trainer.id] = {
         name: trainer.name,
         surname: trainer.surname,
-        availabilitySelectedDate,
+        availabilitySelectedDate: availableSlots,
       };
-    });
+    }
 
-    res.status(200).json(availability);
+    res.status(200).json(availabilityByTrainer);
   } catch (error) {
+    console.error('getMultipleTrainersAvailability Error:', error);
     res.status(500).json({ error: error.message });
   }
 };
 
 
 
-// exports.createTrainer = async (req, res) => {
-//   try {
-//     const {
-//       userId,
-//       type,
-//       backgroundCheck,
-//       name,
-//       surname,
-//       description,
-//       avatar,
-//       userRating,
-//       specialization,
-//       level,
-//       hourlyRate,
-//       categoryId,
-//       subcategoryId,
-//       gender,
-//       skills,
-//       yearsOfExperience,
-//       certification,
-//       ageGroup,
-//       ssn,
-//       typeOfServiceProvider,
-//       certificationStatus,
-//       providerCategory,
-//       availability,
-//       style,
-//       experience,
-//       distance,
-//       serviceAvailability,
-//       location,
-//       settings,
-//       serviceFormat,
-//       groupRange,
-//       duration,
-//       customDurationHours,
-//       features,
-//       expertise,
-//       equipment,
-//       trainingAids,
-//       protectiveGear,
-//       accessories,
-//       degree,
-//       fieldOfStudy,
-//       titles,
-//       tennisCertification,
-//       languages,
-//       serviceIds // <-- REQUIRED to assign this trainer to services
-//     } = req.body;
 
-//     // Create the trainer
-//     const newTrainer = await Trainer.create({
-//       userId,
-//       type,
-//       backgroundCheck,
-//       name,
-//       surname,
-//       description,
-//       avatar,
-//       userRating,
-//       specialization,
-//       level,
-//       hourlyRate,
-//       categoryId,
-//       subcategoryId,
-//       gender,
-//       skills,
-//       yearsOfExperience,
-//       certification,
-//       ageGroup,
-//       ssn,
-//       typeOfServiceProvider,
-//       certificationStatus,
-//       providerCategory,
-//       availability,
-//       style,
-//       experience,
-//       distance,
-//       serviceAvailability,
-//       location,
-//       settings,
-//       serviceFormat,
-//       groupRangeFrom: groupRange?.from || null,
-//       groupRangeTo: groupRange?.to || null,
-//       duration,
-//       customDurationHours,
-//       features,
-//       expertise,
-//       equipment,
-//       trainingAids,
-//       protectiveGear,
-//       accessories,
-//       degree,
-//       fieldOfStudy,
-//       titles,
-//       tennisCertification,
-//       languages
-//     });
-
-//     // Assign to services
-//     if (serviceIds && Array.isArray(serviceIds) && serviceIds.length > 0) {
-//       const serviceTrainerLinks = serviceIds.map(serviceId => ({
-//         serviceId,
-//         trainerId: newTrainer.id
-//       }));
-//       await ServiceTrainer.bulkCreate(serviceTrainerLinks);
-//     }
-
-//     res.status(201).json({
-//       message: 'Trainer created and assigned to services successfully',
-//       trainer: newTrainer
-//     });
-//   } catch (error) {
-//     console.error('Error creating trainer:', error);
-//     res.status(500).json({ error: 'Failed to create trainer' });
-//   }
-// };
-
-// exports.createTrainer = async (req, res) => {
-//   try {
-//     const userId = req.user.id;
-
-//     // 👤 Get full name and user
-//     const user = await User.findByPk(userId);
-//     if (!user) {
-//       return res.status(404).json({ error: 'User not found.' });
-//     }
-
-//     // ✅ Update user role to 'trainer'
-//     await user.update({ role: 'trainer' });
-
-//     const fullName = user.name || '';
-//     const nameParts = fullName.trim().split(' ');
-//     const name = nameParts[0] || 'Unknown';
-//     const surname = nameParts.length > 1 ? nameParts.slice(1).join(' ') : 'Unknown';
-
-//     const data = req.body;
-//     const specifications = data.serviceProviderSpecifications || {};
-//     const equipments = data.serviceProviderEquipments || {};
-//     const prices = data.servicePrices || {};
-//     const profileInfo = data.serviceProfileInformation || {};
-
-//     const experienceMap = {
-//       '0–2 years': 1,
-//       '3–5 years': 4,
-//       '6–10 years': 7,
-//       '10+ years': 11
-//     };
-//     const yearsOfExperience = experienceMap[specifications.experience] || 0;
-
-//     const existingTrainer = await Trainer.findOne({ where: { userId } });
-//     if (existingTrainer) {
-//       return res.status(400).json({ error: 'A trainer with this user already exists.' });
-//     }
-
-//     const trainer = await Trainer.create({
-//       userId,
-//       name,
-//       surname,
-//       type: data.type === 'individual' ? 'Individual' : 'Business',
-//       avatar: profileInfo.avatarUrl || '', // ✅ SETTING THE AVATAR HERE
-
-//       backgroundCheck: '',
-//       description: 'Professional trainer offering tailored services.',
-//       userRating: 0,
-//       specialization: specifications.features?.[0] || 'General',
-//       level: 'Pro',
-//       hourlyRate: prices.basePrice || 0,
-//       categoryId: data.selectedCategoryId,
-//       subcategoryId: data.selectedSubcategoryIds?.[0],
-//       gender: 'Male',
-//       skills: [],
-//       yearsOfExperience,
-//       certification: specifications.certificationStatus || '',
-//       ageGroup: specifications.ageGroup?.[0] || 'Adults',
-//       ssn: data.individualData?.ssn || null,
-//       typeOfServiceProvider: specifications.typeOfServiceProvider || '',
-//       certificationStatus: specifications.certificationStatus || '',
-//       providerCategory: specifications.providerCategory || '',
-//       availability: specifications.availability || '',
-//       style: specifications.style || '',
-//       distance: specifications.distance || '',
-//       serviceAvailability: specifications.serviceAvailability || [],
-//       location: specifications.location || [],
-//       settings: specifications.settings || [],
-//       serviceFormat: specifications.serviceFormat || [],
-//       groupRangeFrom: specifications.groupRange?.from || null,
-//       groupRangeTo: specifications.groupRange?.to || null,
-//       duration: specifications.duration || '',
-//       customDurationHours: specifications.customDurationHours || null,
-//       features: specifications.features || [],
-//       expertise: specifications.expertise || [],
-//       equipment: equipments.equipment || [],
-//       trainingAids: equipments.trainingAids || [],
-//       protectiveGear: equipments.protectiveGear || [],
-//       accessories: equipments.accessories || [],
-//       degree: profileInfo.degree || '',
-//       fieldOfStudy: profileInfo.fieldOfStudy || '',
-//       titles: profileInfo.titles || [],
-//       tennisCertification: profileInfo.tennisCertification || '',
-//       languages: profileInfo.languages || [],
-//       basePrice: prices.basePrice || 0,
-//       weekendPrice: prices.weekendPrice || 0,
-//       additionalPersonPrice: prices.additionalPersonPrice || 0,
-//       discounts: prices.discounts || {},
-//       advancedOrderDiscount: prices.advancedOrderDiscount || {},
-//       additionalFees: prices.additionalFees || {}
-//     });
-
-//     if (Array.isArray(data.selectedServices) && data.selectedServices.length > 0) {
-//       const links = data.selectedServices.map(serviceId => ({
-//         serviceId,
-//         trainerId: trainer.id
-//       }));
-//       await ServiceTrainer.bulkCreate(links);
-//     }
-
-//     return res.status(201).json({
-//       message: 'Trainer created successfully.',
-//       trainer: {
-//         id: trainer.id,
-//         categoryId:    trainer.categoryId,     // ← here
-//         subcategoryId: trainer.subcategoryId,  // ← and here
-//         ...trainer.toJSON()
-//       }
-//     });
-
-//   } catch (error) {
-//     console.error('Error creating trainer:', error);
-//     return res.status(500).json({ error: 'Failed to create trainer.' });
-//   }
-// };
-
-// controllers/trainerController.js
-
-// exports.createTrainer = async (req, res) => {
-//   try {
-//     // 1️⃣ Promote user to trainer
-//     const userId = req.user.id;
-//     const user   = await User.findByPk(userId);
-//     if (!user) return res.status(404).json({ error: 'User not found.' });
-//     await user.update({ role: 'trainer' });
-
-//     // 2️⃣ Pull apart the payload
-//     const {
-//       type,
-//       individualData = {},
-//       selectedCategoryId,
-//       selectedSubcategoryIds = [],
-//       selectedServices = [],    // [32, 34] etc
-//       images = [],              // array of base64 strings
-//       mainImageIndex = 0,
-//       serviceProviderSpecifications = {},
-//       serviceProviderEquipments     = {},
-//       servicePrices                 = {},
-//       serviceProfileInformation     = {}
-//     } = req.body;
-
-//     // 3️⃣ Persist each Base64 → disk
-//     const savedImages = [];
-//     for (let i = 0; i < images.length; i++) {
-//       try {
-//         const url = saveBase64Image(images[i], userId, i);
-//         savedImages.push({ url, order: i });
-//       } catch (err) {
-//         console.error(`Failed to save image #${i}:`, err);
-//       }
-//     }
-//     const avatar = savedImages[mainImageIndex]?.url || '';
-
-//     // 4️⃣ Simple experience→years mapping
-//     const expMap = { '0–2 years':1, '3–5 years':4, '6–10 years':7, '10+ years':11 };
-//     const yearsOfExperience = expMap[serviceProviderSpecifications.experience] || 0;
-
-//     // 5️⃣ Prevent dupes
-//     if (await Trainer.findOne({ where:{ userId } })) {
-//       return res.status(400).json({ error:'A trainer already exists for this user.' });
-//     }
-
-//     // 6️⃣ Spin up the Trainer row
-//     const trainer = await Trainer.create({
-//       userId,
-//       name:    (user.name||'').split(' ')[0] || 'Unknown',
-//       surname: (user.name||'').split(' ').slice(1).join(' ') || 'Unknown',
-//       type:    type==='individual' ? 'Individual' : 'Business',
-//       avatar,
-//       // you can pull highlights etc from req.body if you like:
-//       highlights: [],
-//       description: serviceProfileInformation.description || '',
-//       userRating: 0,
-//       backgroundCheck: '',
-//       specialization:    serviceProviderSpecifications.features?.[0] || 'General',
-//       level:             'Pro',
-//       hourlyRate:        servicePrices.basePrice || 0,
-//       categoryId:        selectedCategoryId,
-//       subcategoryId:     selectedSubcategoryIds[0] || null,
-//       gender:            'Male',
-//       skills:            [],
-//       yearsOfExperience,
-//       certification:     serviceProviderSpecifications.certificationStatus || '',
-//       ageGroup:          serviceProviderSpecifications.ageGroup || [],
-//       ssn:               individualData.ssn || null,
-//       typeOfServiceProvider: serviceProviderSpecifications.typeOfServiceProvider || '',
-//       certificationStatus:   serviceProviderSpecifications.certificationStatus || '',
-//       providerCategory:      serviceProviderSpecifications.providerCategory || '',
-//       availability:          serviceProviderSpecifications.availability || '',
-//       style:                 serviceProviderSpecifications.style || '',
-//       distance:              serviceProviderSpecifications.distance || '',
-//       serviceAvailability:   serviceProviderSpecifications.serviceAvailability || [],
-//       location:              serviceProviderSpecifications.location || [],
-//       settings:              serviceProviderSpecifications.settings || [],
-//       serviceFormat:         serviceProviderSpecifications.serviceFormat || [],
-//       groupRangeFrom:        serviceProviderSpecifications.groupRange?.from || null,
-//       groupRangeTo:          serviceProviderSpecifications.groupRange?.to   || null,
-//       duration:              serviceProviderSpecifications.duration || '',
-//       customDurationHours:   serviceProviderSpecifications.customDurationHours || null,
-//       features:              serviceProviderSpecifications.features || [],
-//       expertise:             serviceProviderSpecifications.expertise || [],
-//       equipment:             serviceProviderEquipments.equipment || [],
-//       trainingAids:          serviceProviderEquipments.trainingAids || [],
-//       protectiveGear:        serviceProviderEquipments.protectiveGear || [],
-//       accessories:           serviceProviderEquipments.accessories || [],
-//       degree:                serviceProfileInformation.degree || '',
-//       fieldOfStudy:          serviceProfileInformation.fieldOfStudy || '',
-//       titles:                serviceProfileInformation.titles || [],
-//       tennisCertification:   serviceProfileInformation.tennisCertification || '',
-//       languages:             serviceProfileInformation.languages || [],
-//       basePrice:             servicePrices.basePrice || 0,
-//       weekendPrice:          servicePrices.weekendPrice || 0,
-//       additionalPersonPrice: servicePrices.additionalPersonPrice || 0,
-//       discounts:             servicePrices.discounts || {},
-//       advancedOrderDiscount: servicePrices.advancedOrderDiscount || {},
-//       additionalFees:        servicePrices.additionalFees || {}
-//     });
-
-//     // 7️⃣ Link trainer ↔ services
-//     if (selectedServices.length > 0) {
-//       // a) pivot table
-//       await ServiceTrainer.bulkCreate(
-//         selectedServices.map(serviceId => ({ serviceId, trainerId: trainer.id }))
-//       );
-
-//       // b) for each service, upsert its details.serviceImage = [ ...saved URLs ]
-//       const urls = savedImages.map(img => img.url);
-//       await Promise.all(
-//         selectedServices.map(async serviceId => {
-//           const [details, created] = await ServiceDetails.findOrCreate({
-//             where: { serviceId },
-//             defaults: {
-//               serviceId,
-//               fullDescription:  '',
-//               highlights:       [],
-//               whatsIncluded:    [],
-//               whatsNotIncluded: [],
-//               recommendations:  [],
-//               whatsToBring:     [],
-//               coachInfo:        '',
-//               serviceImage:     urls
-//             }
-//           });
-//           if (!created) {
-//             details.serviceImage = urls;
-//             await details.save();
-//           }
-//         })
-//       );
-//     }
-
-//     // 8️⃣ All done
-//     return res.status(201).json({
-//       message: 'Trainer created successfully.',
-//       trainer: trainer.toJSON()
-//     });
-
-//   } catch (error) {
-//     console.error('Error creating trainer:', error);
-//     return res.status(500).json({ error:'Failed to create trainer.' });
-//   }
-// };
-
-
-// controllers/trainerController.js
-
-
-// controllers/trainerController.js
 
 
 
@@ -1662,5 +1310,66 @@ exports.findTrainerByUserId = async (req, res) => {
   } catch (error) {
     console.error('Error in findTrainerByUserId:', error);
     res.status(500).json({ error: 'Internal server error while fetching trainer by userId' });
+  }
+};
+
+
+
+// ✅ FINAL, CORRECTED VERSION - Works without model associations
+exports.getTrainerBookings = async (req, res) => {
+  try {
+    const { trainerId } = req.params;
+
+    // First, check if the trainer exists
+    const trainer = await Trainer.findByPk(trainerId);
+    if (!trainer) {
+      return res.status(404).json({ error: 'Trainer not found.' });
+    }
+
+    // STEP 1: Find all bookings for this trainer, but DO NOT include the User model yet.
+    const bookings = await Booking.findAll({
+      where: { trainerId: trainerId },
+      order: [['createdAt', 'DESC']],
+      include: [
+        {
+          model: BookingDate,
+          attributes: ['date', 'startTime', 'endTime'],
+        },
+        {
+          model: Service,
+          attributes: ['id', 'name', 'image'],
+        },
+      ],
+    });
+
+    // If there are no bookings, return an empty array.
+    if (!bookings || bookings.length === 0) {
+      return res.status(200).json([]);
+    }
+
+    // STEP 2: Collect all the unique user IDs from the bookings we found.
+    const userIds = [...new Set(bookings.map(booking => booking.userId))];
+
+    // STEP 3: Now, fetch all the users for those IDs in a separate query.
+    const users = await User.findAll({
+      where: { id: userIds },
+      attributes: ['id', 'name', 'surname', 'username', 'avatar'], // Get the user fields you need
+    });
+
+    // Create a map for easy lookup, so we don't have to loop multiple times.
+    const userMap = new Map(users.map(user => [user.id, user.get({ plain: true })]));
+
+    // STEP 4: Manually attach the User object to each booking.
+    const results = bookings.map(booking => {
+      const bookingJson = booking.get({ plain: true }); // Convert booking to a plain object
+      bookingJson.User = userMap.get(booking.userId) || null; // Find the user from the map and attach it
+      return bookingJson;
+    });
+
+    res.status(200).json(results);
+
+  } catch (error) {
+    console.error('Error fetching trainer bookings:', error);
+    res.status(500).json({ error: 'Failed to fetch trainer bookings.' });
   }
 };

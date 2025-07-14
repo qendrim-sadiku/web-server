@@ -120,12 +120,14 @@ const groupSessionsRouter = require('./routes/groupSessions');
 const recentSearchRoutes = require('./routes/recentSearchRoutes');
 const subUserRoutes = require('./routes/subUserRoutes');
 const googlePlacesRoutes = require('./routes/googlePlacesRoutes');
+const availabilityRoutes = require('./routes/availabilityRoutes');
+
 
 
 // Initialize Express app
 const app = express();
 const PORT = process.env.PORT || 3000;
-const BASE_URL = `https://srv687018.hstgr.cloud:${PORT}`;
+const BASE_URL = `http://localhost:${PORT}`;
 
 // Ensure the uploads directory exists
 const uploadDir = path.join(__dirname, 'uploads');
@@ -202,6 +204,7 @@ app.use('/api', userRoutes); // User routes
 app.use('/countries', locationRoutes); // Location routes
 app.use('/api/services', serviceRoutes); // Service routes
 app.use('/api', bookingRoutes); // Booking routes
+app.use('/api/', availabilityRoutes);
 app.use('/api/trainers', trainerRoutes); // Trainer routes
 app.use('/api', categoryRoutes); // Category routes
 app.use('/api/notifications', notificationRoutes); // Notification routes

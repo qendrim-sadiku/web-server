@@ -16,6 +16,8 @@ router.get('/user/:userId', trainerController.getTrainerByUserId);
 router.get('/by-user/:userId', trainerController.findTrainerByUserId);
 
 
+router.get('/:trainerId/bookings',  trainerController.getTrainerBookings);
+
 
 router.patch('/:id/languages',      trainerController.updateTrainerLanguages);
 router.patch('/:id/field-of-study', trainerController.updateTrainerFieldOfStudy);
