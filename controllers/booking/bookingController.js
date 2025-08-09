@@ -81,131 +81,400 @@ const convertTo24HourFormat = (time) => {
 
 
 
+// exports.createBooking = async (req, res) => {
+//   const transaction = await sequelize.transaction();
+//   try {
+//     const {
+//       userId,
+//       serviceId,
+//       trainerId: providedTrainerId,
+//       address,
+//       participants = [],
+//       dates = [],
+//     } = req.body;
+
+//     if (!Array.isArray(dates) || dates.length === 0) {
+//       return res.status(400).json({ message: 'At least one booking date is required' });
+//     }
+
+//     let trainerId = providedTrainerId;
+//     if (!trainerId) {
+//       const service = await Service.findByPk(serviceId);
+//       if (!service || !service.defaultTrainerId) {
+//         throw new Error('No trainer specified and no default trainer found for this service');
+//       }
+//       trainerId = service.defaultTrainerId;
+//     }
+
+//     const trainer = await Trainer.findByPk(trainerId);
+//     if (!trainer) {
+//       throw new Error('Trainer not found');
+//     }
+
+//     // 🔥 Fetch the user to check for `parentUserId`
+//     const user = await User.findByPk(userId, { attributes: ['id', 'parentUserId'] });
+
+//     if (!user) {
+//       throw new Error('User not found');
+//     }
+
+//     console.log("User Data:", user); // ✅ Debugging log to verify user data
+//     console.log("User Parent ID:", user.parentUserId); // ✅ Check if parentUserId is null or has a value
+
+//     let totalPrice = 0;
+//     let createdBookingDates = [];
+
+//     // ✅ Ensure approved is false if the user has a parentUserId
+//     const isApproved = user.parentUserId ? false : true;
+//     console.log("Final Booking Approval Status:", isApproved); // ✅ Debugging log to confirm correct value
+
+//     // Create a new Booking
+//     const booking = await Booking.create(
+//       {
+//         userId,
+//         serviceId,
+//         trainerId,
+//         address,
+//         totalPrice: 0, // Will be updated later
+//         status: 'active',
+//         isBookingConfirmed: false,
+//         approved: isApproved, // ✅ Ensure correct approval status
+//       },
+//       { transaction }
+//     );
+
+//     // Ensure all booking dates are inserted
+//     for (const dateObj of dates) {
+//       const { date, startTime, endTime } = dateObj;
+
+//       if (!date || !startTime || !endTime) {
+//         throw new Error('Each date must include: { date, startTime, endTime }');
+//       }
+
+//       const startDateTime = new Date(`${date}T${startTime}`);
+//       const endDateTime = new Date(`${date}T${endTime}`);
+
+//       if (isNaN(startDateTime.getTime()) || isNaN(endDateTime.getTime())) {
+//         throw new Error('Invalid date or time format');
+//       }
+
+//       const hours = (endDateTime - startDateTime) / (1000 * 60 * 60);
+//       if (hours <= 0) {
+//         throw new Error('endTime must be after startTime');
+//       }
+
+//       totalPrice += hours * trainer.hourlyRate;
+
+//       // Insert into BookingDate table
+//       const bookingDate = await BookingDate.create(
+//         {
+//           bookingId: booking.id,
+//           date,
+//           startTime,
+//           endTime,
+//         },
+//         { transaction }
+//       );
+//       createdBookingDates.push(bookingDate);
+//     }
+
+//     // Update total price in the booking
+//     await booking.update({ totalPrice }, { transaction });
+
+//     await transaction.commit();
+
+//     return res.status(201).json({
+//       message: 'Booking created successfully',
+//       booking: {
+//         id: booking.id,
+//         userId: booking.userId,
+//         serviceId: booking.serviceId,
+//         trainerId: booking.trainerId,
+//         address: booking.address,
+//         totalPrice: booking.totalPrice,
+//         approved: booking.approved, // ✅ Ensure frontend gets correct approval status
+//         dates: createdBookingDates,
+//       },
+//     });
+//   } catch (error) {
+//     console.error('Error creating booking:', error);
+
+//     if (transaction.finished !== 'commit') {
+//       await transaction.rollback();
+//     }
+
+//     return res.status(500).json({ error: error.message });
+//   }
+// };
+
+
+
+// ✅ FULLY REVISED FUNCTION
 exports.createBooking = async (req, res) => {
-  const transaction = await sequelize.transaction();
+  const transaction = await sequelize.transaction();
+  try {
+    const {
+      userId,
+      serviceId,
+      trainerId: providedTrainerId,
+      address,
+      participants = [],
+      dates = [],
+    } = req.body;
+
+    if (!Array.isArray(dates) || dates.length === 0) {
+      return res.status(400).json({ message: 'At least one booking date is required' });
+    }
+
+    let trainerId = providedTrainerId;
+    if (!trainerId) {
+      const service = await Service.findByPk(serviceId);
+      if (!service || !service.defaultTrainerId) {
+        throw new Error('No trainer specified and no default trainer found for this service');
+      }
+      trainerId = service.defaultTrainerId;
+    }
+
+    const trainer = await Trainer.findByPk(trainerId);
+    if (!trainer) {
+      throw new Error('Trainer not found');
+    }
+    
+    // Determine the initial status based on trainer's auto-accept setting.
+    const initialStatus = trainer.autoAcceptRequests ? 'active' : 'pending_approval';
+
+    const user = await User.findByPk(userId, { attributes: ['id', 'parentUserId'] });
+
+    if (!user) {
+      throw new Error('User not found');
+    }
+
+    let totalPrice = 0;
+    let createdBookingDates = [];
+    const isApproved = user.parentUserId ? false : true;
+
+    const booking = await Booking.create(
+      {
+        userId,
+        serviceId,
+        trainerId,
+        address,
+        totalPrice: 0,
+        status: initialStatus, // Use the new initialStatus variable
+        isBookingConfirmed: false,
+        approved: isApproved,
+      },
+      { transaction }
+    );
+
+    for (const dateObj of dates) {
+      const { date, startTime, endTime } = dateObj;
+
+      if (!date || !startTime || !endTime) {
+        throw new Error('Each date must include: { date, startTime, endTime }');
+      }
+
+      const startDateTime = new Date(`${date}T${startTime}`);
+      const endDateTime = new Date(`${date}T${endTime}`);
+
+      if (isNaN(startDateTime.getTime()) || isNaN(endDateTime.getTime())) {
+        throw new Error('Invalid date or time format');
+      }
+
+      const hours = (endDateTime - startDateTime) / (1000 * 60 * 60);
+      if (hours <= 0) {
+        throw new Error('endTime must be after startTime');
+      }
+
+      totalPrice += hours * trainer.hourlyRate;
+
+      const bookingDate = await BookingDate.create(
+        {
+          bookingId: booking.id,
+          date,
+          startTime,
+          endTime,
+        },
+        { transaction }
+      );
+      createdBookingDates.push(bookingDate);
+    }
+
+    await booking.update({ totalPrice }, { transaction });
+    await transaction.commit();
+
+    return res.status(201).json({
+      message: 'Booking created successfully',
+      booking: {
+        id: booking.id,
+        userId: booking.userId,
+        serviceId: booking.serviceId,
+        trainerId: booking.trainerId,
+        address: booking.address,
+        totalPrice: booking.totalPrice,
+        approved: booking.approved,
+        dates: createdBookingDates,
+      },
+    });
+  } catch (error) {
+    console.error('Error creating booking:', error);
+
+    if (transaction.finished !== 'commit') {
+      await transaction.rollback();
+    }
+
+    return res.status(500).json({ error: error.message });
+  }
+};
+
+exports.getTrainerActivityBookings = async (req, res) => {
   try {
-    const {
-      userId,
-      serviceId,
-      trainerId: providedTrainerId,
-      address,
-      participants = [],
-      dates = [],
-    } = req.body;
+    const { trainerId } = req.params;
+    const now = new Date();
 
-    if (!Array.isArray(dates) || dates.length === 0) {
-      return res.status(400).json({ message: 'At least one booking date is required' });
-    }
-
-    let trainerId = providedTrainerId;
-    if (!trainerId) {
-      const service = await Service.findByPk(serviceId);
-      if (!service || !service.defaultTrainerId) {
-        throw new Error('No trainer specified and no default trainer found for this service');
-      }
-      trainerId = service.defaultTrainerId;
-    }
-
-    const trainer = await Trainer.findByPk(trainerId);
-    if (!trainer) {
-      throw new Error('Trainer not found');
-    }
-
-    // 🔥 Fetch the user to check for `parentUserId`
-    const user = await User.findByPk(userId, { attributes: ['id', 'parentUserId'] });
-
-    if (!user) {
-      throw new Error('User not found');
-    }
-
-    console.log("User Data:", user); // ✅ Debugging log to verify user data
-    console.log("User Parent ID:", user.parentUserId); // ✅ Check if parentUserId is null or has a value
-
-    let totalPrice = 0;
-    let createdBookingDates = [];
-
-    // ✅ Ensure approved is false if the user has a parentUserId
-    const isApproved = user.parentUserId ? false : true;
-    console.log("Final Booking Approval Status:", isApproved); // ✅ Debugging log to confirm correct value
-
-    // Create a new Booking
-    const booking = await Booking.create(
-      {
-        userId,
-        serviceId,
-        trainerId,
-        address,
-        totalPrice: 0, // Will be updated later
-        status: 'active',
-        isBookingConfirmed: false,
-        approved: isApproved, // ✅ Ensure correct approval status
-      },
-      { transaction }
-    );
-
-    // Ensure all booking dates are inserted
-    for (const dateObj of dates) {
-      const { date, startTime, endTime } = dateObj;
-
-      if (!date || !startTime || !endTime) {
-        throw new Error('Each date must include: { date, startTime, endTime }');
-      }
-
-      const startDateTime = new Date(`${date}T${startTime}`);
-      const endDateTime = new Date(`${date}T${endTime}`);
-
-      if (isNaN(startDateTime.getTime()) || isNaN(endDateTime.getTime())) {
-        throw new Error('Invalid date or time format');
-      }
-
-      const hours = (endDateTime - startDateTime) / (1000 * 60 * 60);
-      if (hours <= 0) {
-        throw new Error('endTime must be after startTime');
-      }
-
-      totalPrice += hours * trainer.hourlyRate;
-
-      // Insert into BookingDate table
-      const bookingDate = await BookingDate.create(
+    const bookings = await Booking.findAll({
+      where: { trainerId },
+      order: [['createdAt', 'DESC']],
+      include: [
+        { model: Participant },
+        { model: BookingDate, attributes: ['date', 'startTime', 'endTime', 'createdAt'] },
         {
-          bookingId: booking.id,
-          date,
-          startTime,
-          endTime,
-        },
-        { transaction }
-      );
-      createdBookingDates.push(bookingDate);
-    }
-
-    // Update total price in the booking
-    await booking.update({ totalPrice }, { transaction });
-
-    await transaction.commit();
-
-    return res.status(201).json({
-      message: 'Booking created successfully',
-      booking: {
-        id: booking.id,
-        userId: booking.userId,
-        serviceId: booking.serviceId,
-        trainerId: booking.trainerId,
-        address: booking.address,
-        totalPrice: booking.totalPrice,
-        approved: booking.approved, // ✅ Ensure frontend gets correct approval status
-        dates: createdBookingDates,
-      },
+          model: Service,
+          attributes: ['id', 'name', 'description', 'image', 'duration', 'hourlyRate', 'level'],
+          include: [
+            { model: ServiceDetails },
+            { model: Trainer, attributes: ['id', 'name', 'surname', 'avatar'] },
+            { model: SubCategory, include: [Category] }
+          ]
+        }
+      ]
     });
-  } catch (error) {
-    console.error('Error creating booking:', error);
 
-    if (transaction.finished !== 'commit') {
-      await transaction.rollback();
+    const categorized = {
+      opportunities: [],
+      upcoming: [],
+      past: []
+    };
+
+    for (const booking of bookings) {
+      const bookingJson = booking.toJSON();
+      const latestBookingDate = bookingJson.BookingDates?.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))[0];
+
+      if (booking.status === 'pending_approval') {
+        categorized.opportunities.push(bookingJson);
+      } else if (booking.status === 'active') {
+        if (latestBookingDate) {
+          const endDateTime = new Date(`${latestBookingDate.date}T${latestBookingDate.endTime}`);
+          if (endDateTime > now) {
+            categorized.upcoming.push(bookingJson);
+          } else {
+            bookingJson.status = 'completed';
+            categorized.past.push(bookingJson);
+          }
+        }
+      } else {
+        categorized.past.push(bookingJson);
+      }
     }
 
-    return res.status(500).json({ error: error.message });
+    return res.status(200).json(categorized);
+
+  } catch (error) {
+    console.error('Error fetching trainer activity bookings:', error);
+    return res.status(500).json({ error: 'Failed to fetch trainer activity bookings.' });
   }
 };
+
+// ✅ TESTING VERSION (with static trainerId)
+exports.approveBooking = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const booking = await Booking.findByPk(id);
+
+        if (!booking) {
+            return res.status(404).json({ message: 'Booking not found.' });
+        }
+
+        // --- FOR TESTING ONLY ---
+        // This temporarily bypasses the real security check and assumes
+        // the action is being performed by trainer with ID 260.
+        const STATIC_TRAINER_ID = 260;
+        if (booking.trainerId !== STATIC_TRAINER_ID) {
+            return res.status(403).json({ message: 'This booking does not belong to the test trainer (ID 260).' });
+        }
+        // --- END OF TEST CODE ---
+
+        /*
+        // --- REAL SECURITY CHECK (Use this in production) ---
+        const loggedInUserId = req.user.id; 
+        const trainer = await Trainer.findOne({ where: { userId: loggedInUserId } });
+        if (!trainer || booking.trainerId !== trainer.id) {
+            return res.status(403).json({ message: 'You are not authorized to approve this booking.' });
+        }
+        // --- END OF REAL CHECK ---
+        */
+        
+        if (booking.status !== 'pending_approval') {
+            return res.status(400).json({ message: `Booking cannot be approved. Current status: ${booking.status}` });
+        }
+
+        booking.status = 'active';
+        await booking.save();
+
+        res.status(200).json({ message: 'Booking approved successfully.', booking });
+
+    } catch (error) {
+        console.error('Error approving booking:', error);
+        res.status(500).json({ error: 'Failed to approve booking.' });
+    }
+};
+
+
+// ✅ TESTING VERSION (with static trainerId)
+exports.rejectBooking = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const booking = await Booking.findByPk(id);
+
+        if (!booking) {
+            return res.status(404).json({ message: 'Booking not found.' });
+        }
+        
+        // --- FOR TESTING ONLY ---
+        // This temporarily bypasses the real security check and assumes
+        // the action is being performed by trainer with ID 260.
+        const STATIC_TRAINER_ID = 260;
+        if (booking.trainerId !== STATIC_TRAINER_ID) {
+            return res.status(403).json({ message: 'This booking does not belong to the test trainer (ID 260).' });
+        }
+        // --- END OF TEST CODE ---
+
+        /*
+        // --- REAL SECURITY CHECK (Use this in production) ---
+        const loggedInUserId = req.user.id;
+        const trainer = await Trainer.findOne({ where: { userId: loggedInUserId } });
+        if (!trainer || booking.trainerId !== trainer.id) {
+            return res.status(403).json({ message: 'You are not authorized to reject this booking.' });
+        }
+        // --- END OF REAL CHECK ---
+        */
+
+        if (booking.status !== 'pending_approval') {
+            return res.status(400).json({ message: `Booking cannot be rejected. Current status: ${booking.status}` });
+        }
+
+        booking.status = 'canceled';
+        await booking.save();
+
+        res.status(200).json({ message: 'Booking rejected successfully.', booking });
+
+    } catch (error) {
+        console.error('Error rejecting booking:', error);
+        res.status(500).json({ error: 'Failed to reject booking.' });
+    }
+};
+
+
 
 exports.approveAllSubUserBookings = async (req, res) => {
   try {
@@ -1919,5 +2188,63 @@ exports.getTrainerBookingsCategorized = async (req, res) => {
   } catch (error) {
     console.error('getTrainerBookingsCategorized error:', error);
     return res.status(500).json({ error: 'Failed to fetch trainer bookings.' });
+  }
+};
+
+
+exports.getLastTwoBookingsOfUser = async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    const bookings = await Booking.findAll({
+      where: { userId },
+      order: [['createdAt', 'DESC']], // Sort by newest first
+      limit: 2, // Only take the last 2 bookings
+      include: [
+        {
+          model: Participant,
+        },
+        {
+          model: BookingDate,
+          attributes: ['date', 'startTime', 'endTime', 'createdAt'],
+        },
+        {
+          model: Service,
+          attributes: ['id', 'name', 'description', 'image', 'duration', 'hourlyRate', 'level'],
+          include: [
+            {
+              model: ServiceDetails,
+              attributes: [
+                'fullDescription',
+                'highlights',
+                'whatsIncluded',
+                'whatsNotIncluded',
+                'recommendations',
+                'coachInfo',
+              ],
+            },
+            {
+              model: Trainer,
+              attributes: ['id', 'name', 'surname', 'avatar', 'hourlyRate', 'userRating'],
+            },
+            {
+              model: SubCategory,
+              attributes: ['id', 'name'],
+              include: [
+                {
+                  model: Category,
+                  attributes: ['id', 'name'],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+
+    return res.status(200).json(bookings);
+  } catch (error) {
+    console.error('Error fetching last two bookings of user:', error);
+    res.status(500).json({ error: 'Failed to fetch last two bookings.' });
   }
 };

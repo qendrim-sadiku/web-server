@@ -6,6 +6,7 @@ const Trainer = require('../models/Trainer/Trainer');
 const Booking = require('../models/Bookings/Booking');
 const BookingDate = require('../models/Bookings/BookingDate');
 const AvailabilitySlot = require('../models/Trainer/AvailabilitySlot');
+const dayjs = require('dayjs');   // <-- add
 
 /**
  * Helper – convert '09:30' → 930 for numeric comparisons.
@@ -89,23 +90,31 @@ exports.upsertSlots = async (req, res) => {
     }
 
     /* 3️⃣ Normalize: Split long WORK blocks into 1-hour chunks. Breaks remain intact. */
-    const toChunks = (row) => {
-      if (row.isBreak) return [row]; // Keep breaks as they are
-      const out = [];
-      let [h, m] = row.startTime.split(':').map(Number);
-      const [endH, endM] = row.endTime.split(':').map(Number);
+   // ───── helper: splits / merges 1-hour work blocks ─────
+const toChunks = (row) => {
+  if (row.isBreak) return [row];        // breaks stay as-is
 
-      while (h * 60 + m < endH * 60 + endM) {
-        const nextH = h + 1;
-        out.push({
-          ...row,
-          startTime: `${String(h).padStart(2, '0')}:00`,
-          endTime: `${String(nextH).padStart(2, '0')}:00`,
-        });
-        h = nextH;
-      }
-      return out;
-    };
+  const out = [];
+
+  // build real Date objects so we can cross midnight safely
+  let start = dayjs(`${row.date}T${row.startTime}`);
+  let end   = dayjs(`${row.date}T${row.endTime}`);
+  if (end.isBefore(start)) end = end.add(1, 'day');   // slot spans midnight
+
+  // walk forward, 1 hour at a time
+  while (start.isBefore(end)) {
+    const next = start.add(1, 'hour');
+    out.push({
+      ...row,
+      date:      start.format('YYYY-MM-DD'), // in case we rolled into next day
+      startTime: start.format('HH:mm'),
+      endTime:   next .format('HH:mm'),
+    });
+    start = next;
+  }
+  return out;
+};
+
     const normalized = slots.flatMap(toChunks);
 
     /* 4️⃣ Detect Overlaps within the payload itself */

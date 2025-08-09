@@ -28,6 +28,9 @@ router.get(
 // New route: Get all services provided by a specific trainer
 router.get('/trainer/:trainerId', serviceController.getServicesByTrainer);
 
+router.get('/by-subcategory-name', serviceController.getServicesBySubCategoryName);
+
+router.get('/subcategory/:subCategoryId', serviceController.getServicesBySubCategoryWithFilters);
 
 
 

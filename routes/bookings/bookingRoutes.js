@@ -1,5 +1,6 @@
 const express = require('express');
 const bookingController = require('../../controllers/booking/bookingController');
+const { authenticateJWT } = require('../../middleware/authMiddleware');
 const router = express.Router();
 
 router.post('/bookings', bookingController.createBooking);
@@ -45,12 +46,22 @@ router.get(
   bookingController.getTrainerBookingsCategorized
 );
 
+
+
+router.patch('/bookings/:id/approve' , authenticateJWT, bookingController.approveBooking);
+router.patch('/bookings/:id/reject', authenticateJWT,  bookingController.rejectBooking);
+
+router.get('/bookings/trainer/:trainerId/activity', bookingController.getTrainerActivityBookings);
+
+
 router.post('/bookings/user/:userId/dates', bookingController.getUserBookingsByDates);
 // Route to get booking counts for multiple services
 router.post('/bookings/counts', bookingController.getBookingCountsForServices);
 // Route to remove a booking
 router.delete('/bookings/:id', bookingController.removeBooking);
 router.put('/bookings/rate/:id', bookingController.rateBooking);
+
+router.get('/bookings/user/:userId/last-two', bookingController.getLastTwoBookingsOfUser);
 
 
 

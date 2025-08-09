@@ -5,11 +5,19 @@ const BookingDate = require('../../models/Bookings/BookingDate');
 const User = require('../../models/User'); // Import the User model
 const { ServiceTrainer, Service } = require('../../models/Services/Service');
 const saveBase64Image = require('../../util/saveBase64Image');
-const ServiceDetails     = require('../../models/Services/ServiceDetails');
+const ServiceDetails = require('../../models/Services/ServiceDetails');
 const Category = require('../../models/Category/Category');
 const SubCategory = require('../../models/Category/SubCategory');
 const availabilityService = require('../../services/availabilityService');
+const dayjs = require('dayjs');   // <-- add
 
+// ── helper: convert "14:00" ➞ "02:00 PM" ───────────────────
+const to12h = (hhmm) => {
+  const [h, m] = hhmm.split(':').map(Number);   // "14:30" → 14 , 30
+  const suffix = h >= 12 ? 'PM' : 'AM';
+  const hr12   = ((h + 11) % 12) + 1;          // 0→12, 13→1, 23→11
+  return `${hr12.toString().padStart(2,'0')}:${m.toString().padStart(2,'0')} ${suffix}`;
+};
 
 
 // Get all trainers by category with optional filtering by age group
@@ -99,7 +107,7 @@ exports.getAllTrainers = async (req, res) => {
 //         {
 //           model: Review,
 //           include: [{ model: User, attributes: ['username', 'name', 'surname', 'avatar'] }],
-          
+
 //         },
 //         {
 //           model: Booking,
@@ -216,8 +224,8 @@ exports.getTrainerDetails = async (req, res) => {
     const currentHour = now.getHours();
     const currentMinutes = now.getMinutes();
     const availabilityToday = availabilityTodayRaw.filter(slot => {
-        const [slotHour, slotMinutes] = slot.startTime.split(':').map(Number);
-        return slotHour > currentHour || (slotHour === currentHour && slotMinutes >= currentMinutes);
+      const [slotHour, slotMinutes] = slot.startTime.split(':').map(Number);
+      return slotHour > currentHour || (slotHour === currentHour && slotMinutes >= currentMinutes);
     });
 
     res.status(200).json({
@@ -347,27 +355,19 @@ function parseTime(time) {
 // Helper function to generate hourly slots
 function generateHourlySlots(startTime, endTime) {
   const slots = [];
-  let currentTime = parseTime(startTime);
 
-  const endTimeComparable = parseTime(endTime);
+  let start = dayjs(`1970-01-01T${startTime}`);
+  let end = dayjs(`1970-01-01T${endTime}`);
+  if (end.isBefore(start)) end = end.add(1, 'day');   // safety
 
-  while (currentTime < endTimeComparable) {
-    const hours = Math.floor(currentTime / 100).toString().padStart(2, '0');
-    const minutes = (currentTime % 100).toString().padStart(2, '0');
-    
-    const nextTime = currentTime + 100;
-
-    const nextHours = Math.floor(nextTime / 100).toString().padStart(2, '0');
-    const nextMinutes = (nextTime % 100).toString().padStart(2, '0');
-
+  while (start.isBefore(end)) {
+    const next = start.add(1, 'hour');
     slots.push({
-      startTime: `${hours}:${minutes}`,
-      endTime: `${nextHours}:${nextMinutes}`
+      startTime: start.format('HH:mm'),
+      endTime: next.format('HH:mm'),
     });
-
-    currentTime += 100;
+    start = next;
   }
-
   return slots;
 }
 
@@ -408,7 +408,7 @@ function filterPastSlots(availability) {
 
 //   const today = new Date();
 //   const selectedDate = date ? date : today.toISOString().split('T')[0];
- 
+
 //   const tomorrow = new Date();
 //   tomorrow.setDate(today.getDate() + 1);
 //   const tomorrowDate = tomorrow.toISOString().split('T')[0];
@@ -530,7 +530,10 @@ exports.getMultipleTrainersAvailability = async (req, res) => {
       availabilityByTrainer[trainer.id] = {
         name: trainer.name,
         surname: trainer.surname,
-        availabilitySelectedDate: availableSlots,
+        availabilitySelectedDate: availableSlots.map(slot => ({
+          startTime: to12h(slot.startTime),
+          endTime: to12h(slot.endTime)
+        }))
       };
     }
 
@@ -551,24 +554,24 @@ exports.createTrainer = async (req, res) => {
   try {
     // 1️⃣ Promote user to trainer
     const userId = req.user.id;
-    const user   = await User.findByPk(userId);
+    const user = await User.findByPk(userId);
     if (!user) return res.status(404).json({ error: 'User not found.' });
     await user.update({ role: 'trainer' });
 
     // 2️⃣ Destructure payload
     const {
-      type                          = 'individual',
-      individualData                = {},
+      type = 'individual',
+      individualData = {},
       selectedCategoryId,
-      selectedSubcategoryIds        = [],
-      selectedServices              = [],  // [serviceId or { id, images, equipment, ... }]
-      images                        = [],  // top-level base64 images
-      mainImageIndex                = 0,
+      selectedSubcategoryIds = [],
+      selectedServices = [],  // [serviceId or { id, images, equipment, ... }]
+      images = [],  // top-level base64 images
+      mainImageIndex = 0,
       serviceProviderSpecifications = {},
-      serviceProviderEquipments     = {},
-      servicePrices                 = {},
-      serviceProfileInformation     = {},
-      highlights                    = []
+      serviceProviderEquipments = {},
+      servicePrices = {},
+      serviceProfileInformation = {},
+      highlights = []
     } = req.body;
 
     // 3️⃣ Save images → avatar fallback
@@ -576,8 +579,8 @@ exports.createTrainer = async (req, res) => {
       saveBase64Image(b64, `${userId}_avatar`, i)
     );
     const avatar = serviceProfileInformation.avatarUrl
-                 || savedAvatars[mainImageIndex]
-                 || '';
+      || savedAvatars[mainImageIndex]
+      || '';
 
 
     const trainerDescription = serviceProfileInformation.trainerDescription || '';
@@ -601,58 +604,58 @@ exports.createTrainer = async (req, res) => {
     // 6️⃣ Create the Trainer row, including equipment fields
     const trainer = await Trainer.create({
       userId,
-      name:    (user.name||'').split(' ')[0] || 'Unknown',
-      surname: (user.name||'').split(' ').slice(1).join(' ') || 'Unknown',
-      type:    type === 'individual' ? 'Individual' : 'Business',
+      name: (user.name || '').split(' ')[0] || 'Unknown',
+      surname: (user.name || '').split(' ').slice(1).join(' ') || 'Unknown',
+      type: type === 'individual' ? 'Individual' : 'Business',
       avatar,
       highlights,
       trainerDescription,
-      description:           serviceProfileInformation.description || '',
-      specialization:        serviceProviderSpecifications.features?.[0] || 'General',
-      level:                 'Pro',
-      hourlyRate:            servicePrices.basePrice || 0,
-      categoryId:            selectedCategoryId,
-      subcategoryId:         selectedSubcategoryIds[0] || null,
-      gender:                serviceProviderSpecifications.gender || 'Other',
+      description: serviceProfileInformation.description || '',
+      specialization: serviceProviderSpecifications.features?.[0] || 'General',
+      level: 'Pro',
+      hourlyRate: servicePrices.basePrice || 0,
+      categoryId: selectedCategoryId,
+      subcategoryId: selectedSubcategoryIds[0] || null,
+      gender: serviceProviderSpecifications.gender || 'Other',
       yearsOfExperience,
-      certification:         serviceProviderSpecifications.certificationStatus || '',
-      ssn:                   individualData.ssn || null,
+      certification: serviceProviderSpecifications.certificationStatus || '',
+      ssn: individualData.ssn || null,
       typeOfServiceProvider: serviceProviderSpecifications.typeOfServiceProvider || '',
-      providerCategory:      serviceProviderSpecifications.providerCategory || '',
-      availability:          serviceProviderSpecifications.availability || '',
-      style:                 serviceProviderSpecifications.style || '',
-      distance:              serviceProviderSpecifications.distance || '',
-      serviceAvailability:   serviceProviderSpecifications.serviceAvailability || [],
-      ageGroup:              serviceProviderSpecifications.ageGroup || [],
-      location:              serviceProviderSpecifications.location || [],
-      settings:              serviceProviderSpecifications.settings || [],
-      serviceFormat:         serviceProviderSpecifications.serviceFormat || [],
-      groupRangeFrom:        serviceProviderSpecifications.groupRange?.from || null,
-      groupRangeTo:          serviceProviderSpecifications.groupRange?.to   || null,
-      duration:              serviceProviderSpecifications.duration || '',
-      customDurationHours:   serviceProviderSpecifications.customDurationHours || null,
-      features:              serviceProviderSpecifications.features || [],
-      expertise:             serviceProviderSpecifications.expertise || [],
+      providerCategory: serviceProviderSpecifications.providerCategory || '',
+      availability: serviceProviderSpecifications.availability || '',
+      style: serviceProviderSpecifications.style || '',
+      distance: serviceProviderSpecifications.distance || '',
+      serviceAvailability: serviceProviderSpecifications.serviceAvailability || [],
+      ageGroup: serviceProviderSpecifications.ageGroup || [],
+      location: serviceProviderSpecifications.location || [],
+      settings: serviceProviderSpecifications.settings || [],
+      serviceFormat: serviceProviderSpecifications.serviceFormat || [],
+      groupRangeFrom: serviceProviderSpecifications.groupRange?.from || null,
+      groupRangeTo: serviceProviderSpecifications.groupRange?.to || null,
+      duration: serviceProviderSpecifications.duration || '',
+      customDurationHours: serviceProviderSpecifications.customDurationHours || null,
+      features: serviceProviderSpecifications.features || [],
+      expertise: serviceProviderSpecifications.expertise || [],
 
       // ◀️ Persist these four columns
-      equipment:      serviceProviderEquipments.equipment      || [],
-      trainingAids:   serviceProviderEquipments.trainingAids   || [],
+      equipment: serviceProviderEquipments.equipment || [],
+      trainingAids: serviceProviderEquipments.trainingAids || [],
       protectiveGear: serviceProviderEquipments.protectiveGear || [],
-      accessories:    serviceProviderEquipments.accessories    || [],
+      accessories: serviceProviderEquipments.accessories || [],
 
       // Profile & pricing
-      degree:                serviceProfileInformation.degree                || '',
-      fieldOfStudy:          serviceProfileInformation.fieldOfStudy          || '',
-      titles:                serviceProfileInformation.titles                || [],
-      tennisCertification:   serviceProfileInformation.tennisCertification   || '',
-      languages:             serviceProfileInformation.languages             || [],
+      degree: serviceProfileInformation.degree || '',
+      fieldOfStudy: serviceProfileInformation.fieldOfStudy || '',
+      titles: serviceProfileInformation.titles || [],
+      tennisCertification: serviceProfileInformation.tennisCertification || '',
+      languages: serviceProfileInformation.languages || [],
 
-      basePrice:             servicePrices.basePrice             || 0,
-      weekendPrice:          servicePrices.weekendPrice          || 0,
+      basePrice: servicePrices.basePrice || 0,
+      weekendPrice: servicePrices.weekendPrice || 0,
       additionalPersonPrice: servicePrices.additionalPersonPrice || 0,
-      discounts:             servicePrices.discounts             || {},
+      discounts: servicePrices.discounts || {},
       advancedOrderDiscount: servicePrices.advancedOrderDiscount || {},
-      additionalFees:        servicePrices.additionalFees        || {}
+      additionalFees: servicePrices.additionalFees || {}
     });
 
     // 7️⃣ Link trainer ↔ services & upsert per-service details (optional)
@@ -674,7 +677,7 @@ exports.createTrainer = async (req, res) => {
       });
       if (!created) {
         pivot.serviceImages = urls;
-        pivot.equipment     = gear;
+        pivot.equipment = gear;
         await pivot.save();
       }
 
@@ -683,13 +686,13 @@ exports.createTrainer = async (req, res) => {
         where: { serviceId },
         defaults: {
           serviceId,
-          fullDescription:  serviceProfileInformation.fullDescription || '',
-          highlights:       serviceProfileInformation.highlights           || [],
-          whatsIncluded:    serviceProfileInformation.whatsIncluded        || [],
-          whatsNotIncluded: serviceProfileInformation.whatsNotIncluded     || [],
-          recommendations:  serviceProfileInformation.recommendations       || [],
-          coachInfo:        serviceProfileInformation.coachInfo            || '',
-          serviceImage:     urls
+          fullDescription: serviceProfileInformation.fullDescription || '',
+          highlights: serviceProfileInformation.highlights || [],
+          whatsIncluded: serviceProfileInformation.whatsIncluded || [],
+          whatsNotIncluded: serviceProfileInformation.whatsNotIncluded || [],
+          recommendations: serviceProfileInformation.recommendations || [],
+          coachInfo: serviceProfileInformation.coachInfo || '',
+          serviceImage: urls
         }
       });
       if (!detailCreated) {
@@ -758,7 +761,7 @@ exports.updateTrainerFull = async (req, res) => {
     // --- Handle Avatar Update ---
     let avatarToSave = existingTrainer.avatar; // Use 'existingTrainer'
     if (serviceProfileInformation.avatarUrl) { // Explicit avatar URL from profile info takes precedence
-        avatarToSave = serviceProfileInformation.avatarUrl;
+      avatarToSave = serviceProfileInformation.avatarUrl;
     } else if (Array.isArray(images) && images.length > 0) {
       const primaryAvatarImage = images[mainImageIndex];
       if (primaryAvatarImage) {
@@ -883,14 +886,14 @@ exports.updateTrainerFull = async (req, res) => {
           } else if (typeof imgStr === 'string' && imgStr.trim() !== '' && !imgStr.startsWith('assets/placeholder')) {
             // Assume it's an existing URL/path, ensure it's relative if it's from our own server
             if (imgStr.startsWith('http://localhost:3000')) { // Or your config.serverUrl
-                 try {
-                    const url = new URL(imgStr);
-                    processedImageUrlsForDb.push(url.pathname); // Store as relative path e.g. /uploads/...
-                 } catch (e) {
-                    processedImageUrlsForDb.push(imgStr); // Fallback
-                 }
+              try {
+                const url = new URL(imgStr);
+                processedImageUrlsForDb.push(url.pathname); // Store as relative path e.g. /uploads/...
+              } catch (e) {
+                processedImageUrlsForDb.push(imgStr); // Fallback
+              }
             } else {
-                 processedImageUrlsForDb.push(imgStr); // Already relative or external URL
+              processedImageUrlsForDb.push(imgStr); // Already relative or external URL
             }
           }
         }
@@ -906,9 +909,9 @@ exports.updateTrainerFull = async (req, res) => {
             processedImageUrlsForDb = existingDetail.serviceImage;
           }
         }
-         console.log(`No new images in payload for serviceId ${serviceId}. Using existing (if any):`, processedImageUrlsForDb);
+        console.log(`No new images in payload for serviceId ${serviceId}. Using existing (if any):`, processedImageUrlsForDb);
       }
-      
+
       // Ensure no null or undefined values in the array before saving
       processedImageUrlsForDb = processedImageUrlsForDb.filter(url => url && typeof url === 'string');
 
@@ -960,19 +963,19 @@ exports.updateTrainerFull = async (req, res) => {
     }
 
     const finalTrainerData = await Trainer.findByPk(trainerId, {
-        include: [
-             { model: Category, attributes: ['id', 'name'] },
-             { model: SubCategory, attributes: ['id', 'name'], include: [{ model: Category, attributes: ['id', 'name'] }] },
-             {
-               model: Service,
-               attributes: ['id', 'name', 'description', 'image', 'duration', 'hourlyRate', 'level', 'type', 'subCategoryId'],
-               through: { attributes: ['serviceImages', 'equipment'] }, // Include from ServiceTrainer
-               include: [
-                 { model: ServiceDetails, attributes: ['serviceImage', 'fullDescription', 'highlights', 'whatsIncluded', 'whatsNotIncluded', 'recommendations', 'coachInfo'] },
-                 { model: SubCategory, attributes: ['id', 'name'], include: [{ model: Category, attributes: ['id', 'name'] }] }
-               ]
-             }
-        ]
+      include: [
+        { model: Category, attributes: ['id', 'name'] },
+        { model: SubCategory, attributes: ['id', 'name'], include: [{ model: Category, attributes: ['id', 'name'] }] },
+        {
+          model: Service,
+          attributes: ['id', 'name', 'description', 'image', 'duration', 'hourlyRate', 'level', 'type', 'subCategoryId'],
+          through: { attributes: ['serviceImages', 'equipment'] }, // Include from ServiceTrainer
+          include: [
+            { model: ServiceDetails, attributes: ['serviceImage', 'fullDescription', 'highlights', 'whatsIncluded', 'whatsNotIncluded', 'recommendations', 'coachInfo'] },
+            { model: SubCategory, attributes: ['id', 'name'], include: [{ model: Category, attributes: ['id', 'name'] }] }
+          ]
+        }
+      ]
     });
 
 
@@ -1097,7 +1100,7 @@ exports.updateTrainerTennisCert = async (req, res) => {
 exports.updateTrainerDistance = async (req, res) => {
   try {
     const { id } = req.params;
-    let   { distance } = req.body;
+    let { distance } = req.body;
 
     distance = Number(distance);
     if (Number.isNaN(distance) || distance < 0)
@@ -1190,95 +1193,95 @@ exports.getTrainerByUserId = async (req, res) => {
 
     // Build a structured "services" array with nested details
     const services = (t.Services || []).map((service) => ({
-      serviceId:          service.id,
-      name:               service.name,
-      description:        service.description,
-      image:              service.image,
-      duration:           service.duration,
-      hourlyRate:         service.hourlyRate,
-      level:              service.level,
-      type:               service.type,
-      subCategoryId:      service.subCategoryId,
-      subCategoryName:    service.SubCategory?.name || null,
-      categoryId:         service.SubCategory?.Category?.id || null,
-      categoryName:       service.SubCategory?.Category?.name || null,
+      serviceId: service.id,
+      name: service.name,
+      description: service.description,
+      image: service.image,
+      duration: service.duration,
+      hourlyRate: service.hourlyRate,
+      level: service.level,
+      type: service.type,
+      subCategoryId: service.subCategoryId,
+      subCategoryName: service.SubCategory?.name || null,
+      categoryId: service.SubCategory?.Category?.id || null,
+      categoryName: service.SubCategory?.Category?.name || null,
       // pull service-level gallery from ServiceDetails
-      serviceImage:       service.ServiceDetail?.serviceImage || [],
-      fullDescription:    service.ServiceDetail?.fullDescription || '',
-      highlights:         service.ServiceDetail?.highlights || [],
-      whatsIncluded:      service.ServiceDetail?.whatsIncluded || [],
-      whatsNotIncluded:   service.ServiceDetail?.whatsNotIncluded || [],
-      recommendations:    service.ServiceDetail?.recommendations || [],
-      coachInfo:          service.ServiceDetail?.coachInfo || ''
+      serviceImage: service.ServiceDetail?.serviceImage || [],
+      fullDescription: service.ServiceDetail?.fullDescription || '',
+      highlights: service.ServiceDetail?.highlights || [],
+      whatsIncluded: service.ServiceDetail?.whatsIncluded || [],
+      whatsNotIncluded: service.ServiceDetail?.whatsNotIncluded || [],
+      recommendations: service.ServiceDetail?.recommendations || [],
+      coachInfo: service.ServiceDetail?.coachInfo || ''
     }));
 
     return res.status(200).json({
-      trainerId:              t.id,
-      userId:                 t.userId,
-      categoryId:             t.categoryId,
-      subcategoryId:          t.subcategoryId,
-      categoryName:           t.Category?.name || null,
-      subcategoryName:        t.SubCategory?.name || null,
+      trainerId: t.id,
+      userId: t.userId,
+      categoryId: t.categoryId,
+      subcategoryId: t.subcategoryId,
+      categoryName: t.Category?.name || null,
+      subcategoryName: t.SubCategory?.name || null,
 
-      style:                  t.style,
-      availability:           t.availability,
-      typeOfServiceProvider:  t.typeOfServiceProvider,
-      providerCategory:       t.providerCategory,
-      certificationStatus:    t.certificationStatus,
+      style: t.style,
+      availability: t.availability,
+      typeOfServiceProvider: t.typeOfServiceProvider,
+      providerCategory: t.providerCategory,
+      certificationStatus: t.certificationStatus,
 
       // core fields
-      name:                   t.name,
-      surname:                t.surname,
-      description:            t.description,
-      trainerDescription:     t.trainerDescription,
+      name: t.name,
+      surname: t.surname,
+      description: t.description,
+      trainerDescription: t.trainerDescription,
 
-      avatar:                 t.avatar,
-      userRating:             t.userRating,
-      specialization:         t.specialization,
-      level:                  t.level,
-      hourlyRate:             t.hourlyRate,
-      gender:                 t.gender,
-      distance:               t.distance,
+      avatar: t.avatar,
+      userRating: t.userRating,
+      specialization: t.specialization,
+      level: t.level,
+      hourlyRate: t.hourlyRate,
+      gender: t.gender,
+      distance: t.distance,
 
-      yearsOfExperience:      t.yearsOfExperience,
-      ageGroup:               t.ageGroup,
-      serviceAvailability:    t.serviceAvailability,
-      location:               t.location,
-      settings:               t.settings,
-      serviceFormat:          t.serviceFormat,
-      features:               t.features,
-      expertise:              t.expertise,
+      yearsOfExperience: t.yearsOfExperience,
+      ageGroup: t.ageGroup,
+      serviceAvailability: t.serviceAvailability,
+      location: t.location,
+      settings: t.settings,
+      serviceFormat: t.serviceFormat,
+      features: t.features,
+      expertise: t.expertise,
 
       // serviceProviderEquipments now included:
       serviceProviderEquipments: {
-        equipment:      t.equipment || [],
-        trainingAids:   t.trainingAids || [],
+        equipment: t.equipment || [],
+        trainingAids: t.trainingAids || [],
         protectiveGear: t.protectiveGear || [],
-        accessories:    t.accessories || []
+        accessories: t.accessories || []
       },
 
       // profile & pricing
-      degrees:                t.degree,
-      fieldOfStudy:           t.fieldOfStudy,
-      tennisCertification:    t.tennisCertification,
-      languages:              t.languages,
-      highlights:             t.highlights,
-      groupRangeFrom:         t.groupRangeFrom,
-      groupRangeTo:           t.groupRangeTo,
-      duration:               t.duration,
-      customDurationHours:    t.customDurationHours,
-      basePrice:              t.basePrice,
-      weekendPrice:           t.weekendPrice,
-      additionalPersonPrice:  t.additionalPersonPrice,
-      discounts:              t.discounts,
-      advancedOrderDiscount:  t.advancedOrderDiscount,
-      additionalFees:         t.additionalFees,
+      degrees: t.degree,
+      fieldOfStudy: t.fieldOfStudy,
+      tennisCertification: t.tennisCertification,
+      languages: t.languages,
+      highlights: t.highlights,
+      groupRangeFrom: t.groupRangeFrom,
+      groupRangeTo: t.groupRangeTo,
+      duration: t.duration,
+      customDurationHours: t.customDurationHours,
+      basePrice: t.basePrice,
+      weekendPrice: t.weekendPrice,
+      additionalPersonPrice: t.additionalPersonPrice,
+      discounts: t.discounts,
+      advancedOrderDiscount: t.advancedOrderDiscount,
+      additionalFees: t.additionalFees,
 
       // newly added services array
       services,
 
-      createdAt:              t.createdAt,
-      updatedAt:              t.updatedAt
+      createdAt: t.createdAt,
+      updatedAt: t.updatedAt
     });
 
   } catch (error) {
@@ -1301,11 +1304,11 @@ exports.findTrainerByUserId = async (req, res) => {
     res.status(200).json({
       trainerId: trainer.id,
       userId: trainer.userId,
-      categoryId:    trainer.categoryId,     // 🆕
+      categoryId: trainer.categoryId,     // 🆕
       subcategoryId: trainer.subcategoryId,  // 🆕
       name: trainer.name,
       surname: trainer.surname,
-      
+
     });
   } catch (error) {
     console.error('Error in findTrainerByUserId:', error);
