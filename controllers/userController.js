@@ -4,10 +4,14 @@ const bcrypt = require('bcrypt');
 const fs = require('fs');
 const multer = require('multer');
 const sendEmail = require('../config/emailService');
+const Participant = require('../models/Bookings/Participant');
 
 const path = require('path');
 const { Op } = require('sequelize'); // Import Op from Sequelize
 const { Sequelize } = require('sequelize');
+
+const Booking = require('../models/Bookings/Booking');
+
 
 const UserContactDetails = require('../models/UserProfile/UserContactDetails');
 const Address = require('../models/UserProfile/Address');
@@ -2281,5 +2285,58 @@ exports.resetPasswordWithoutCurrent = async (req, res) => {
   } catch (error) {
     console.error('Error resetting password:', error);
     res.status(500).json({ message: 'Failed to reset password' });
+  }
+};
+
+// Returns unique participants for a user across all their bookings (no duplicates)
+// GET /users/:userId/saved-participants
+exports.getSavedParticipants = async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    if (!userId) {
+      return res.status(400).json({ message: 'User ID is required' });
+    }
+
+    // Group by fields that define "same participant"
+    const rows = await Participant.findAll({
+      attributes: [
+        // a representative id (lowest)
+        [Sequelize.fn('MIN', Sequelize.col('Participant.id')), 'id'],
+        'name',
+        'surname',
+        'age',
+        'category',
+        // helpful stats
+        [Sequelize.fn('COUNT', '*'), 'timesUsed'],
+        [Sequelize.fn('MAX', Sequelize.col('Participant.createdAt')), 'lastUsedAt'],
+      ],
+      include: [
+        {
+          model: Booking,
+          attributes: [],
+          where: { userId }, // only participants from this user's bookings
+        },
+      ],
+      group: ['name', 'surname', 'age', 'category'],
+      order: [[Sequelize.fn('MAX', Sequelize.col('Participant.createdAt')), 'DESC']],
+      raw: true,
+    });
+
+    // Optional: normalize the shape a bit
+    const saved = rows.map(r => ({
+      id: Number(r.id),
+      name: r.name,
+      surname: r.surname,
+      age: r.age === null ? null : Number(r.age),
+      category: r.category, // 'Adult' | 'Teenager' | 'Child'
+      timesUsed: Number(r.timesUsed),
+      lastUsedAt: r.lastUsedAt,
+    }));
+
+    return res.status(200).json({ participants: saved });
+  } catch (error) {
+    console.error('Error fetching saved participants:', error);
+    return res.status(500).json({ message: 'Failed to fetch saved participants' });
   }
 };

@@ -199,5 +199,9 @@ router.post('/forgot-password/verify-code', userController.verifyForgotPasswordC
 // Reset password without current password
 router.post('/forgot-password/reset-password', userController.resetPasswordWithoutCurrent);
 
+// GET /users/:userId/saved-participants
+router.get('/users/:userId/saved-participants', userController.getSavedParticipants);
+
 
 module.exports = router;
+

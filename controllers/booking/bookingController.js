@@ -209,123 +209,155 @@ const convertTo24HourFormat = (time) => {
 
 
 
-// ✅ FULLY REVISED FUNCTION
+// ✅ FULL METHOD: createBooking (filters out current user from participants)
 exports.createBooking = async (req, res) => {
-  const transaction = await sequelize.transaction();
-  try {
-    const {
-      userId,
-      serviceId,
-      trainerId: providedTrainerId,
-      address,
-      participants = [],
-      dates = [],
-    } = req.body;
+  const transaction = await sequelize.transaction();
+  try {
+    const {
+      userId,
+      serviceId,
+      trainerId: providedTrainerId,
+      address,
+      participants = [],
+      dates = [],
+    } = req.body;
 
-    if (!Array.isArray(dates) || dates.length === 0) {
-      return res.status(400).json({ message: 'At least one booking date is required' });
-    }
+    if (!Array.isArray(dates) || dates.length === 0) {
+      return res.status(400).json({ message: 'At least one booking date is required' });
+    }
 
-    let trainerId = providedTrainerId;
-    if (!trainerId) {
-      const service = await Service.findByPk(serviceId);
-      if (!service || !service.defaultTrainerId) {
-        throw new Error('No trainer specified and no default trainer found for this service');
-      }
-      trainerId = service.defaultTrainerId;
-    }
+    // Resolve trainer
+    let trainerId = providedTrainerId;
+    if (!trainerId) {
+      const service = await Service.findByPk(serviceId);
+      if (!service || !service.defaultTrainerId) {
+        throw new Error('No trainer specified and no default trainer found for this service');
+      }
+      trainerId = service.defaultTrainerId;
+    }
 
-    const trainer = await Trainer.findByPk(trainerId);
-    if (!trainer) {
-      throw new Error('Trainer not found');
-    }
-    
-    // Determine the initial status based on trainer's auto-accept setting.
+    const trainer = await Trainer.findByPk(trainerId);
+    if (!trainer) throw new Error('Trainer not found');
+
+    // Determine initial status (auto-accept)
     const initialStatus = trainer.autoAcceptRequests ? 'active' : 'pending_approval';
 
-    const user = await User.findByPk(userId, { attributes: ['id', 'parentUserId'] });
+    // Fetch user with extra fields for self-filtering
+    const user = await User.findByPk(userId, {
+      attributes: ['id', 'parentUserId', 'name', 'surname', 'email'],
+    });
+    if (!user) throw new Error('User not found');
 
-    if (!user) {
-      throw new Error('User not found');
-    }
+    const isApproved = user.parentUserId ? false : true;
 
-    let totalPrice = 0;
-    let createdBookingDates = [];
-    const isApproved = user.parentUserId ? false : true;
+    // Create booking shell
+    const booking = await Booking.create(
+      {
+        userId,
+        serviceId,
+        trainerId,
+        address,
+        totalPrice: 0,
+        status: initialStatus,
+        isBookingConfirmed: false,
+        approved: isApproved,
+      },
+      { transaction }
+    );
 
-    const booking = await Booking.create(
-      {
-        userId,
-        serviceId,
-        trainerId,
-        address,
-        totalPrice: 0,
-        status: initialStatus, // Use the new initialStatus variable
-        isBookingConfirmed: false,
-        approved: isApproved,
-      },
-      { transaction }
-    );
+    // Create dates + compute price
+    let totalPrice = 0;
+    const createdBookingDates = [];
 
-    for (const dateObj of dates) {
-      const { date, startTime, endTime } = dateObj;
+    for (const dateObj of dates) {
+      const { date, startTime, endTime } = dateObj || {};
+      if (!date || !startTime || !endTime) {
+        throw new Error('Each date must include: { date, startTime, endTime }');
+      }
 
-      if (!date || !startTime || !endTime) {
-        throw new Error('Each date must include: { date, startTime, endTime }');
-      }
+      const startDateTime = new Date(`${date}T${startTime}`);
+      const endDateTime   = new Date(`${date}T${endTime}`);
 
-      const startDateTime = new Date(`${date}T${startTime}`);
-      const endDateTime = new Date(`${date}T${endTime}`);
+      if (isNaN(startDateTime.getTime()) || isNaN(endDateTime.getTime())) {
+        throw new Error('Invalid date or time format');
+      }
+      const hours = (endDateTime - startDateTime) / (1000 * 60 * 60);
+      if (hours <= 0) throw new Error('endTime must be after startTime');
 
-      if (isNaN(startDateTime.getTime()) || isNaN(endDateTime.getTime())) {
-        throw new Error('Invalid date or time format');
-      }
+      totalPrice += hours * trainer.hourlyRate;
 
-      const hours = (endDateTime - startDateTime) / (1000 * 60 * 60);
-      if (hours <= 0) {
-        throw new Error('endTime must be after startTime');
-      }
+      const bookingDate = await BookingDate.create(
+        { bookingId: booking.id, date, startTime, endTime },
+        { transaction }
+      );
+      createdBookingDates.push(bookingDate);
+    }
 
-      totalPrice += hours * trainer.hourlyRate;
+    // ✅ Create participants (skip current user if included)
+    const createdParticipants = [];
+    if (Array.isArray(participants) && participants.length > 0) {
+      const selfFiltered = participants.filter((p) => {
+        // 1) Explicit flag
+        if (p.isSelf === true) return false;
 
-      const bookingDate = await BookingDate.create(
-        {
-          bookingId: booking.id,
-          date,
-          startTime,
-          endTime,
-        },
-        { transaction }
-      );
-      createdBookingDates.push(bookingDate);
-    }
+        // 2) Participant userId equals booking userId
+        if (p.userId && String(p.userId) === String(userId)) return false;
 
-    await booking.update({ totalPrice }, { transaction });
-    await transaction.commit();
+        // 3) Same email
+        const emailMatches =
+          p.email && user.email &&
+          String(p.email).trim().toLowerCase() === String(user.email).trim().toLowerCase();
 
-    return res.status(201).json({
-      message: 'Booking created successfully',
-      booking: {
-        id: booking.id,
-        userId: booking.userId,
-        serviceId: booking.serviceId,
-        trainerId: booking.trainerId,
-        address: booking.address,
-        totalPrice: booking.totalPrice,
-        approved: booking.approved,
-        dates: createdBookingDates,
-      },
-    });
-  } catch (error) {
-    console.error('Error creating booking:', error);
+        // 4) Same full name
+        const nameMatches =
+          p.name && p.surname && user.name && user.surname &&
+          String(p.name).trim().toLowerCase() === String(user.name).trim().toLowerCase() &&
+          String(p.surname).trim().toLowerCase() === String(user.surname).trim().toLowerCase();
 
-    if (transaction.finished !== 'commit') {
-      await transaction.rollback();
-    }
+        return !(emailMatches || nameMatches);
+      });
 
-    return res.status(500).json({ error: error.message });
-  }
+      const normalized = selfFiltered.map((p) => ({
+        ...p,
+        category: normalizeCategory(p.category), // uses helper already in this file
+        bookingId: booking.id,
+      }));
+
+      if (normalized.length > 0) {
+        const rows = await Participant.bulkCreate(normalized, { transaction, returning: true });
+        createdParticipants.push(...rows);
+      }
+    }
+
+    // Update price
+    await booking.update({ totalPrice }, { transaction });
+
+    await transaction.commit();
+
+    return res.status(201).json({
+      message: 'Booking created successfully',
+      booking: {
+        id: booking.id,
+        userId: booking.userId,
+        serviceId: booking.serviceId,
+        trainerId: booking.trainerId,
+        address: booking.address,
+        totalPrice: booking.totalPrice,
+        approved: booking.approved,
+        dates: createdBookingDates,
+        participants: createdParticipants,
+      },
+    });
+  } catch (error) {
+    console.error('Error creating booking:', error);
+    if (transaction.finished !== 'commit') {
+      await transaction.rollback();
+    }
+    return res.status(500).json({ error: error.message });
+  }
 };
+
+
 
 exports.getTrainerActivityBookings = async (req, res) => {
   try {
