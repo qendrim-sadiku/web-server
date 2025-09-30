@@ -11,6 +11,12 @@ const moment = require('moment'); // Make sure you have moment.js installed
 const { Op } = require('sequelize'); // Import Op from Sequelize
 const GroupSession = require('../../models/GroupSessions/GroupSession');
 const User = require('../../models/User');
+const { expandBookingDates } = require('../../util/expandBookingDates.JS');
+
+const { v4: uuidv4 } = require('uuid');
+const dayjs = require('dayjs');
+const isBetween = require('dayjs/plugin/isBetween');
+dayjs.extend(isBetween);
 
 const updatePastBookingsStatus = async () => {
   
@@ -81,6 +87,7 @@ const convertTo24HourFormat = (time) => {
 
 
 
+
 // exports.createBooking = async (req, res) => {
 //   const transaction = await sequelize.transaction();
 //   try {
@@ -97,6 +104,7 @@ const convertTo24HourFormat = (time) => {
 //       return res.status(400).json({ message: 'At least one booking date is required' });
 //     }
 
+//     // Resolve trainer
 //     let trainerId = providedTrainerId;
 //     if (!trainerId) {
 //       const service = await Service.findByPk(serviceId);
@@ -107,78 +115,99 @@ const convertTo24HourFormat = (time) => {
 //     }
 
 //     const trainer = await Trainer.findByPk(trainerId);
-//     if (!trainer) {
-//       throw new Error('Trainer not found');
-//     }
+//     if (!trainer) throw new Error('Trainer not found');
 
-//     // 🔥 Fetch the user to check for `parentUserId`
-//     const user = await User.findByPk(userId, { attributes: ['id', 'parentUserId'] });
+//     // Determine initial status (auto-accept)
+//     const initialStatus = trainer.autoAcceptRequests ? 'active' : 'pending_approval';
 
-//     if (!user) {
-//       throw new Error('User not found');
-//     }
+//     // Fetch user with extra fields for self-filtering
+//     const user = await User.findByPk(userId, {
+//       attributes: ['id', 'parentUserId', 'name', 'surname', 'email'],
+//     });
+//     if (!user) throw new Error('User not found');
 
-//     console.log("User Data:", user); // ✅ Debugging log to verify user data
-//     console.log("User Parent ID:", user.parentUserId); // ✅ Check if parentUserId is null or has a value
-
-//     let totalPrice = 0;
-//     let createdBookingDates = [];
-
-//     // ✅ Ensure approved is false if the user has a parentUserId
 //     const isApproved = user.parentUserId ? false : true;
-//     console.log("Final Booking Approval Status:", isApproved); // ✅ Debugging log to confirm correct value
 
-//     // Create a new Booking
+//     // Create booking shell
 //     const booking = await Booking.create(
 //       {
 //         userId,
 //         serviceId,
 //         trainerId,
 //         address,
-//         totalPrice: 0, // Will be updated later
-//         status: 'active',
+//         totalPrice: 0,
+//         status: initialStatus,
 //         isBookingConfirmed: false,
-//         approved: isApproved, // ✅ Ensure correct approval status
+//         approved: isApproved,
 //       },
 //       { transaction }
 //     );
 
-//     // Ensure all booking dates are inserted
-//     for (const dateObj of dates) {
-//       const { date, startTime, endTime } = dateObj;
+//     // Create dates + compute price
+//     let totalPrice = 0;
+//     const createdBookingDates = [];
 
+//     for (const dateObj of dates) {
+//       const { date, startTime, endTime } = dateObj || {};
 //       if (!date || !startTime || !endTime) {
 //         throw new Error('Each date must include: { date, startTime, endTime }');
 //       }
 
 //       const startDateTime = new Date(`${date}T${startTime}`);
-//       const endDateTime = new Date(`${date}T${endTime}`);
+//       const endDateTime   = new Date(`${date}T${endTime}`);
 
 //       if (isNaN(startDateTime.getTime()) || isNaN(endDateTime.getTime())) {
 //         throw new Error('Invalid date or time format');
 //       }
-
 //       const hours = (endDateTime - startDateTime) / (1000 * 60 * 60);
-//       if (hours <= 0) {
-//         throw new Error('endTime must be after startTime');
-//       }
+//       if (hours <= 0) throw new Error('endTime must be after startTime');
 
 //       totalPrice += hours * trainer.hourlyRate;
 
-//       // Insert into BookingDate table
 //       const bookingDate = await BookingDate.create(
-//         {
-//           bookingId: booking.id,
-//           date,
-//           startTime,
-//           endTime,
-//         },
+//         { bookingId: booking.id, date, startTime, endTime },
 //         { transaction }
 //       );
 //       createdBookingDates.push(bookingDate);
 //     }
 
-//     // Update total price in the booking
+//     // ✅ Create participants (skip current user if included)
+//     const createdParticipants = [];
+//     if (Array.isArray(participants) && participants.length > 0) {
+//       const selfFiltered = participants.filter((p) => {
+//         // 1) Explicit flag
+//         if (p.isSelf === true) return false;
+
+//         // 2) Participant userId equals booking userId
+//         if (p.userId && String(p.userId) === String(userId)) return false;
+
+//         // 3) Same email
+//         const emailMatches =
+//           p.email && user.email &&
+//           String(p.email).trim().toLowerCase() === String(user.email).trim().toLowerCase();
+
+//         // 4) Same full name
+//         const nameMatches =
+//           p.name && p.surname && user.name && user.surname &&
+//           String(p.name).trim().toLowerCase() === String(user.name).trim().toLowerCase() &&
+//           String(p.surname).trim().toLowerCase() === String(user.surname).trim().toLowerCase();
+
+//         return !(emailMatches || nameMatches);
+//       });
+
+//       const normalized = selfFiltered.map((p) => ({
+//         ...p,
+//         category: normalizeCategory(p.category), // uses helper already in this file
+//         bookingId: booking.id,
+//       }));
+
+//       if (normalized.length > 0) {
+//         const rows = await Participant.bulkCreate(normalized, { transaction, returning: true });
+//         createdParticipants.push(...rows);
+//       }
+//     }
+
+//     // Update price
 //     await booking.update({ totalPrice }, { transaction });
 
 //     await transaction.commit();
@@ -192,147 +221,385 @@ const convertTo24HourFormat = (time) => {
 //         trainerId: booking.trainerId,
 //         address: booking.address,
 //         totalPrice: booking.totalPrice,
-//         approved: booking.approved, // ✅ Ensure frontend gets correct approval status
+//         approved: booking.approved,
 //         dates: createdBookingDates,
+//         participants: createdParticipants,
 //       },
 //     });
 //   } catch (error) {
 //     console.error('Error creating booking:', error);
-
 //     if (transaction.finished !== 'commit') {
 //       await transaction.rollback();
 //     }
-
 //     return res.status(500).json({ error: error.message });
 //   }
 // };
 
 
 
-// ✅ FULL METHOD: createBooking (filters out current user from participants)
+
+function hmsToMinutes(hms) {
+  const [H,M,S='0'] = hms.split(':').map(Number);
+  return H*60 + M + (S ? Math.floor(S/60) : 0);
+}
+
+function diffHours(date, startTime, endTime) {
+  const start = dayjs(`${date}T${startTime}`);
+  const end = dayjs(`${date}T${endTime}`);
+  return (end.diff(start, 'minute')) / 60;
+}
+
+function normalizeCategory(category) {
+  switch (category) {
+    case 'Adults': return 'Adult';
+    case 'Teenagers': return 'Teenager';
+    case 'Children': return 'Child';
+    default: return category || 'Adult';
+  }
+}
+
+// Expand mixed blocks: exact + rec (daily/weekly/monthly)
+function expandDateBlocks(blocks) {
+  const out = [];
+  const pushInst = (date, startTime, endTime, meta) => {
+    out.push({ date, startTime, endTime, meta });
+  };
+
+  for (const block of blocks) {
+    const { kind } = block || {};
+    if (!kind) continue;
+
+    if (kind === 'exact') {
+      const { date, startTime, endTime } = block;
+      if (date && startTime && endTime) {
+        const groupId = uuidv4();
+        pushInst(date, startTime, endTime, { kind: 'exact', groupId });
+      }
+      continue;
+    }
+
+    if (kind === 'rec') {
+      const { mode, rangeStart, rangeEnd, startTime, endTime, weekdays } = block;
+      if (!mode || !rangeStart || !rangeEnd || !startTime || !endTime) continue;
+
+      const start = dayjs(rangeStart);
+      const end = dayjs(rangeEnd);
+      if (!start.isValid() || !end.isValid() || end.isBefore(start)) continue;
+
+      const groupId = uuidv4();
+      if (mode === 'daily') {
+        let cur = start.clone();
+        while (!cur.isAfter(end)) {
+          pushInst(cur.format('YYYY-MM-DD'), startTime, endTime,
+            { kind: 'rec', mode: 'daily', rangeStart, rangeEnd, groupId });
+          cur = cur.add(1, 'day');
+        }
+      } else if (mode === 'weekly') {
+        // weekdays = ["MO","WE"] etc.; if missing → every day of week
+        const map = { SU:0, MO:1, TU:2, WE:3, TH:4, FR:5, SA:6 };
+        const chosen = Array.isArray(weekdays) && weekdays.length > 0 ? weekdays : ['MO','TU','WE','TH','FR','SA','SU'];
+        let cur = start.clone();
+        while (!cur.isAfter(end)) {
+          const dow = cur.day(); // 0..6
+          const tag = ['SU','MO','TU','WE','TH','FR','SA'][dow];
+          if (chosen.includes(tag)) {
+            pushInst(cur.format('YYYY-MM-DD'), startTime, endTime,
+              { kind: 'rec', mode: 'weekly', rangeStart, rangeEnd, weekdays: chosen, groupId });
+          }
+          cur = cur.add(1, 'day');
+        }
+      } else if (mode === 'monthly') {
+        // Step month by month, same day-of-month as rangeStart (clamped if month too short)
+        const dom = start.date();
+        let cur = start.clone().startOf('month').date(dom);
+        // ensure first date >= rangeStart
+        if (cur.isBefore(start)) cur = cur.add(1, 'month').date(Math.min(dom, cur.daysInMonth()));
+        while (!cur.isAfter(end)) {
+          pushInst(cur.format('YYYY-MM-DD'), startTime, endTime,
+            { kind: 'rec', mode: 'monthly', rangeStart, rangeEnd, groupId });
+          cur = cur.add(1, 'month').date(Math.min(dom, cur.daysInMonth()));
+        }
+      }
+    }
+  }
+
+  // de-duplicate (same date+start+end from overlapping blocks)
+  const seen = new Set();
+  const dedup = [];
+  for (const inst of out) {
+    const key = `${inst.date}|${inst.startTime}|${inst.endTime}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      dedup.push(inst);
+    }
+  }
+
+  // sort by date/time
+  dedup.sort((a,b) => {
+    if (a.date !== b.date) return a.date.localeCompare(b.date);
+    return hmsToMinutes(a.startTime) - hmsToMinutes(b.startTime);
+  });
+
+  return dedup;
+}
+
+// Check for internal overlaps within the same new booking payload
+function findInternalOverlaps(instances) {
+  const conflicts = [];
+  const byDate = instances.reduce((acc, i) => {
+    (acc[i.date] ||= []).push(i);
+    return acc;
+  }, {});
+  for (const date of Object.keys(byDate)) {
+    const arr = byDate[date].slice().sort((a,b)=>hmsToMinutes(a.startTime)-hmsToMinutes(b.startTime));
+    for (let i=1;i<arr.length;i++){
+      const prev = arr[i-1], cur = arr[i];
+      // overlap if prev.start < cur.end && prev.end > cur.start
+      if (prev.startTime < cur.endTime && prev.endTime > cur.startTime) {
+        conflicts.push({ date, a: prev, b: cur });
+      }
+    }
+  }
+  return conflicts;
+}
+
+// Query DB for collisions against trainer (and user)
+async function findConflicts({ trainerId, userId, instances }) {
+  const conflicts = [];
+
+  for (const inst of instances) {
+    // trainer collisions (active/pending/anything not canceled)
+    const trainerHit = await BookingDate.findOne({
+      where: {
+        date: inst.date,
+        [Op.and]: [
+          { startTime: { [Op.lt]: inst.endTime } },
+          { endTime:   { [Op.gt]: inst.startTime } }
+        ]
+      },
+      include: [{
+        model: Booking,
+        required: true,
+        where: {
+          trainerId,
+          status: { [Op.ne]: 'canceled' }
+        },
+        attributes: ['id','userId','trainerId','status']
+      }]
+    });
+
+    if (trainerHit) {
+      conflicts.push({
+        scope: 'trainer',
+        date: inst.date,
+        startTime: inst.startTime,
+        endTime: inst.endTime,
+        clashesWithBookingId: trainerHit.Booking.id
+      });
+      continue; // no need to check user if trainer already blocks
+    }
+
+    // user collisions (optional but requested)
+    const userHit = await BookingDate.findOne({
+      where: {
+        date: inst.date,
+        [Op.and]: [
+          { startTime: { [Op.lt]: inst.endTime } },
+          { endTime:   { [Op.gt]: inst.startTime } }
+        ]
+      },
+      include: [{
+        model: Booking,
+        required: true,
+        where: {
+          userId,
+          status: { [Op.ne]: 'canceled' }
+        },
+        attributes: ['id','userId','trainerId','status']
+      }]
+    });
+
+    if (userHit) {
+      conflicts.push({
+        scope: 'user',
+        date: inst.date,
+        startTime: inst.startTime,
+        endTime: inst.endTime,
+        clashesWithBookingId: userHit.Booking.id
+      });
+    }
+  }
+
+  return conflicts;
+}
+
+// Build a human-friendly summary per input block (groupId)
+function summarizeSchedules(createdDates) {
+  // group by sourceGroupId
+  const groups = new Map();
+  for (const d of createdDates) {
+    const gid = d.sourceGroupId || `g_${d.id}`;
+    if (!groups.has(gid)) groups.set(gid, []);
+    groups.get(gid).push(d);
+  }
+
+  const out = [];
+  for (const [gid, rows] of groups.entries()) {
+    const r0 = rows[0];
+    if (r0.sourceKind === 'rec') {
+      out.push({
+        type: r0.sourceMode, // daily | weekly | monthly
+        rangeStart: r0.sourceRangeStart,
+        rangeEnd: r0.sourceRangeEnd,
+        startTime: rows[0].startTime,
+        endTime: rows[0].endTime,
+        weekdays: r0.sourceWeekdays || null,
+        generatedDates: rows.length
+      });
+    } else {
+      // exact list
+      out.push({
+        type: 'exact',
+        occurrences: rows
+          .map(r => ({ date: r.date, startTime: r.startTime, endTime: r.endTime }))
+          .sort((a,b)=> a.date===b.date
+              ? hmsToMinutes(a.startTime)-hmsToMinutes(b.startTime)
+              : a.date.localeCompare(b.date))
+      });
+    }
+  }
+
+  return out;
+}
+
+// ============== FULL CONTROLLER METHOD =================
 exports.createBooking = async (req, res) => {
   const transaction = await sequelize.transaction();
   try {
     const {
       userId,
       serviceId,
-      trainerId: providedTrainerId,
+      selectedTrainerId,          // <-- from your payload
+      trainerId: providedTrainerId, // (back-compat)
       address,
       participants = [],
       dates = [],
     } = req.body;
 
     if (!Array.isArray(dates) || dates.length === 0) {
-      return res.status(400).json({ message: 'At least one booking date is required' });
+      await transaction.rollback();
+      return res.status(400).json({ message: 'At least one date block is required' });
     }
 
-    // Resolve trainer
-    let trainerId = providedTrainerId;
+    const trainerId = selectedTrainerId || providedTrainerId;
     if (!trainerId) {
-      const service = await Service.findByPk(serviceId);
-      if (!service || !service.defaultTrainerId) {
-        throw new Error('No trainer specified and no default trainer found for this service');
-      }
-      trainerId = service.defaultTrainerId;
+      await transaction.rollback();
+      return res.status(400).json({ message: 'trainerId (selectedTrainerId) is required' });
     }
 
     const trainer = await Trainer.findByPk(trainerId);
     if (!trainer) throw new Error('Trainer not found');
 
-    // Determine initial status (auto-accept)
-    const initialStatus = trainer.autoAcceptRequests ? 'active' : 'pending_approval';
-
-    // Fetch user with extra fields for self-filtering
-    const user = await User.findByPk(userId, {
-      attributes: ['id', 'parentUserId', 'name', 'surname', 'email'],
-    });
+    const user = await User.findByPk(userId, { attributes: ['id','parentUserId','name','surname','email'] });
     if (!user) throw new Error('User not found');
 
+    // Expand recurrence
+    const expanded = expandDateBlocks(dates);
+    if (expanded.length === 0) {
+      await transaction.rollback();
+      return res.status(400).json({ message: 'No valid dates after expansion' });
+    }
+
+    // Internal overlaps (within the submitted payload)
+    const internal = findInternalOverlaps(expanded);
+    if (internal.length) {
+      await transaction.rollback();
+      return res.status(409).json({
+        message: 'Your selected times overlap each other',
+        internalConflicts: internal.map(c => ({
+          date: c.date,
+          a: { startTime: c.a.startTime, endTime: c.a.endTime },
+          b: { startTime: c.b.startTime, endTime: c.b.endTime }
+        }))
+      });
+    }
+
+    // Collisions with existing bookings for trainer/user
+    const external = await findConflicts({ trainerId, userId, instances: expanded });
+    if (external.length) {
+      await transaction.rollback();
+      return res.status(409).json({
+        message: 'Conflicting time slots found',
+        conflicts: external
+      });
+    }
+
+    // Determine initial status
+    const initialStatus = trainer.autoAcceptRequests ? 'active' : 'pending_approval';
     const isApproved = user.parentUserId ? false : true;
 
     // Create booking shell
-    const booking = await Booking.create(
-      {
-        userId,
-        serviceId,
-        trainerId,
-        address,
-        totalPrice: 0,
-        status: initialStatus,
-        isBookingConfirmed: false,
-        approved: isApproved,
-      },
-      { transaction }
-    );
+    const booking = await Booking.create({
+      userId,
+      serviceId,
+      trainerId,
+      address,
+      totalPrice: 0,
+      status: initialStatus,
+      isBookingConfirmed: false,
+      approved: isApproved
+    }, { transaction });
+
+    // Participants (skip self)
+    if (participants.length) {
+      const filtered = participants.filter((p) => {
+        if (p.isSelf === true) return false;
+        if (p.userId && String(p.userId) === String(userId)) return false;
+        const emailMatches = p.email && user.email && p.email.trim().toLowerCase() === user.email.trim().toLowerCase();
+        const nameMatches =
+          p.name && p.surname && user.name && user.surname &&
+          p.name.trim().toLowerCase() === user.name.trim().toLowerCase() &&
+          p.surname.trim().toLowerCase() === user.surname.trim().toLowerCase();
+        return !(emailMatches || nameMatches);
+      }).map(p => ({ ...p, category: normalizeCategory(p.category), bookingId: booking.id }));
+
+      if (filtered.length) await Participant.bulkCreate(filtered, { transaction });
+    }
 
     // Create dates + compute price
     let totalPrice = 0;
-    const createdBookingDates = [];
-
-    for (const dateObj of dates) {
-      const { date, startTime, endTime } = dateObj || {};
-      if (!date || !startTime || !endTime) {
-        throw new Error('Each date must include: { date, startTime, endTime }');
+    for (const inst of expanded) {
+      const hours = diffHours(inst.date, inst.startTime, inst.endTime);
+      if (hours <= 0) {
+        await transaction.rollback();
+        return res.status(400).json({ message: 'Invalid time range (end <= start)' });
       }
-
-      const startDateTime = new Date(`${date}T${startTime}`);
-      const endDateTime   = new Date(`${date}T${endTime}`);
-
-      if (isNaN(startDateTime.getTime()) || isNaN(endDateTime.getTime())) {
-        throw new Error('Invalid date or time format');
-      }
-      const hours = (endDateTime - startDateTime) / (1000 * 60 * 60);
-      if (hours <= 0) throw new Error('endTime must be after startTime');
-
       totalPrice += hours * trainer.hourlyRate;
 
-      const bookingDate = await BookingDate.create(
-        { bookingId: booking.id, date, startTime, endTime },
-        { transaction }
-      );
-      createdBookingDates.push(bookingDate);
-    }
-
-    // ✅ Create participants (skip current user if included)
-    const createdParticipants = [];
-    if (Array.isArray(participants) && participants.length > 0) {
-      const selfFiltered = participants.filter((p) => {
-        // 1) Explicit flag
-        if (p.isSelf === true) return false;
-
-        // 2) Participant userId equals booking userId
-        if (p.userId && String(p.userId) === String(userId)) return false;
-
-        // 3) Same email
-        const emailMatches =
-          p.email && user.email &&
-          String(p.email).trim().toLowerCase() === String(user.email).trim().toLowerCase();
-
-        // 4) Same full name
-        const nameMatches =
-          p.name && p.surname && user.name && user.surname &&
-          String(p.name).trim().toLowerCase() === String(user.name).trim().toLowerCase() &&
-          String(p.surname).trim().toLowerCase() === String(user.surname).trim().toLowerCase();
-
-        return !(emailMatches || nameMatches);
-      });
-
-      const normalized = selfFiltered.map((p) => ({
-        ...p,
-        category: normalizeCategory(p.category), // uses helper already in this file
+      await BookingDate.create({
         bookingId: booking.id,
-      }));
-
-      if (normalized.length > 0) {
-        const rows = await Participant.bulkCreate(normalized, { transaction, returning: true });
-        createdParticipants.push(...rows);
-      }
+        date: inst.date,
+        startTime: inst.startTime,
+        endTime: inst.endTime,
+        sourceKind: inst.meta.kind,
+        sourceMode: inst.meta.mode || null,
+        sourceRangeStart: inst.meta.rangeStart || null,
+        sourceRangeEnd: inst.meta.rangeEnd || null,
+        sourceWeekdays: inst.meta.weekdays || null,
+        sourceGroupId: inst.meta.groupId || null
+      }, { transaction });
     }
 
-    // Update price
     await booking.update({ totalPrice }, { transaction });
-
     await transaction.commit();
+
+    // Fetch created dates to construct schedules summary
+    const createdBookingDates = await BookingDate.findAll({
+      where: { bookingId: booking.id },
+      order: [['date','ASC'], ['startTime','ASC']]
+    });
+
+    const schedules = summarizeSchedules(createdBookingDates.map(d => d.get({ plain: true })));
 
     return res.status(201).json({
       message: 'Booking created successfully',
@@ -344,19 +611,78 @@ exports.createBooking = async (req, res) => {
         address: booking.address,
         totalPrice: booking.totalPrice,
         approved: booking.approved,
-        dates: createdBookingDates,
-        participants: createdParticipants,
-      },
+        schedules,             // <-- NEW: what you show as “daily/weekly/monthly/exact”
+        dates: createdBookingDates
+      }
     });
   } catch (error) {
-    console.error('Error creating booking:', error);
-    if (transaction.finished !== 'commit') {
-      await transaction.rollback();
-    }
-    return res.status(500).json({ error: error.message });
+    if (transaction.finished !== 'commit') await transaction.rollback();
+    console.error('createBooking error:', error);
+    res.status(500).json({ error: error.message });
   }
 };
 
+
+
+// exports.getTrainerActivityBookings = async (req, res) => {
+//   try {
+//     const { trainerId } = req.params;
+//     const now = new Date();
+
+//     const bookings = await Booking.findAll({
+//       where: { trainerId },
+//       order: [['createdAt', 'DESC']],
+//       include: [
+//         { model: Participant },
+//         { model: BookingDate, attributes: ['date', 'startTime', 'endTime', 'createdAt'] },
+//         {
+//           model: Service,
+//           attributes: ['id', 'name', 'description', 'image', 'duration', 'hourlyRate', 'level'],
+//           include: [
+//             { model: ServiceDetails },
+//             { model: Trainer, attributes: ['id', 'name', 'surname', 'avatar'] },
+//             { model: SubCategory, include: [Category] }
+//           ]
+//         }
+//       ]
+//     });
+
+//     const categorized = {
+//       opportunities: [],
+//       upcoming: [],
+//       past: []
+//     };
+
+//     for (const booking of bookings) {
+//       const bookingJson = booking.toJSON();
+//       const latestBookingDate = bookingJson.BookingDates?.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))[0];
+
+//       if (booking.status === 'pending_approval') {
+//         categorized.opportunities.push(bookingJson);
+//       } else if (booking.status === 'active') {
+//         if (latestBookingDate) {
+//           const endDateTime = new Date(`${latestBookingDate.date}T${latestBookingDate.endTime}`);
+//           if (endDateTime > now) {
+//             categorized.upcoming.push(bookingJson);
+//           } else {
+//             bookingJson.status = 'completed';
+//             categorized.past.push(bookingJson);
+//           }
+//         }
+//       } else {
+//         categorized.past.push(bookingJson);
+//       }
+//     }
+
+//     return res.status(200).json(categorized);
+
+//   } catch (error) {
+//     console.error('Error fetching trainer activity bookings:', error);
+//     return res.status(500).json({ error: 'Failed to fetch trainer activity bookings.' });
+//   }
+// };
+
+// ✅ TESTING VERSION (with static trainerId)
 
 
 exports.getTrainerActivityBookings = async (req, res) => {
@@ -369,55 +695,83 @@ exports.getTrainerActivityBookings = async (req, res) => {
       order: [['createdAt', 'DESC']],
       include: [
         { model: Participant },
-        { model: BookingDate, attributes: ['date', 'startTime', 'endTime', 'createdAt'] },
+        { model: BookingDate, attributes: ['date','startTime','endTime','createdAt','sourceKind','sourceMode','sourceRangeStart','sourceRangeEnd','sourceWeekdays','sourceGroupId'] },
         {
           model: Service,
-          attributes: ['id', 'name', 'description', 'image', 'duration', 'hourlyRate', 'level'],
+          attributes: ['id','name','description','image','duration','hourlyRate','level'],
           include: [
             { model: ServiceDetails },
-            { model: Trainer, attributes: ['id', 'name', 'surname', 'avatar'] },
+            { model: Trainer, attributes: ['id','name','surname','avatar'] },
             { model: SubCategory, include: [Category] }
           ]
         }
       ]
     });
 
-    const categorized = {
-      opportunities: [],
-      upcoming: [],
-      past: []
-    };
+    const categorized = { opportunities: [], upcoming: [], past: [] };
 
     for (const booking of bookings) {
-      const bookingJson = booking.toJSON();
-      const latestBookingDate = bookingJson.BookingDates?.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))[0];
+      const b = booking.toJSON();
+
+      // schedules summary
+      const map = new Map();
+      for (const r of (b.BookingDates || [])) {
+        const gid = r.sourceGroupId || `g_${r.date}_${r.startTime}_${r.endTime}`;
+        if (!map.has(gid)) map.set(gid, []);
+        map.get(gid).push(r);
+      }
+      b.schedules = [];
+      for (const [gid, arr] of map.entries()) {
+        const r0 = arr[0];
+        if (r0.sourceKind === 'rec') {
+          b.schedules.push({
+            type: r0.sourceMode,
+            rangeStart: r0.sourceRangeStart,
+            rangeEnd: r0.sourceRangeEnd,
+            startTime: r0.startTime,
+            endTime: r0.endTime,
+            weekdays: r0.sourceWeekdays || null,
+            generatedDates: arr.length
+          });
+        } else {
+          b.schedules.push({
+            type: 'exact',
+            occurrences: arr
+              .map(x => ({ date: x.date, startTime: x.startTime, endTime: x.endTime }))
+              .sort((a,b)=> a.date===b.date
+                ? a.startTime.localeCompare(b.startTime)
+                : a.date.localeCompare(b.date))
+          });
+        }
+      }
+
+      const latest = b.BookingDates?.sort((a,b)=> new Date(b.createdAt)-new Date(a.createdAt))[0];
 
       if (booking.status === 'pending_approval') {
-        categorized.opportunities.push(bookingJson);
+        categorized.opportunities.push(b);
       } else if (booking.status === 'active') {
-        if (latestBookingDate) {
-          const endDateTime = new Date(`${latestBookingDate.date}T${latestBookingDate.endTime}`);
-          if (endDateTime > now) {
-            categorized.upcoming.push(bookingJson);
-          } else {
-            bookingJson.status = 'completed';
-            categorized.past.push(bookingJson);
+        if (latest) {
+          const endDateTime = new Date(`${latest.date}T${latest.endTime}`);
+          if (endDateTime > now) categorized.upcoming.push(b);
+          else {
+            b.status = 'completed';
+            categorized.past.push(b);
           }
         }
       } else {
-        categorized.past.push(bookingJson);
+        categorized.past.push(b);
       }
     }
 
     return res.status(200).json(categorized);
-
   } catch (error) {
     console.error('Error fetching trainer activity bookings:', error);
     return res.status(500).json({ error: 'Failed to fetch trainer activity bookings.' });
   }
 };
 
-// ✅ TESTING VERSION (with static trainerId)
+
+
 exports.approveBooking = async (req, res) => {
     try {
         const { id } = req.params;
@@ -608,12 +962,13 @@ exports.deleteSubUserBooking = async (req, res) => {
   }
 };
 
+// ✅ FULL REPLACEMENT
 exports.createSubUserBooking = async (req, res) => {
   const transaction = await sequelize.transaction();
   try {
     const {
-      parentUserId,     // ID of the parent (the inviter)
-      subUserId,        // ID of the sub-user for whom the booking is being made
+      parentUserId,
+      subUserId,
       serviceId,
       trainerId: providedTrainerId,
       address,
@@ -621,24 +976,23 @@ exports.createSubUserBooking = async (req, res) => {
       dates = [],
     } = req.body;
 
-    // Validate required parameters
     if (!parentUserId || !subUserId || !serviceId) {
+      await transaction.rollback();
       return res.status(400).json({ message: 'Parent user ID, sub-user ID, and service ID are required' });
     }
     if (!Array.isArray(dates) || dates.length === 0) {
+      await transaction.rollback();
       return res.status(400).json({ message: 'At least one booking date is required' });
     }
 
-    // Ensure the sub-user exists and belongs to the provided parent
+    // Validate sub-user relationship
     const subUser = await User.findByPk(subUserId, { attributes: ['id', 'parentUserId'] });
-    if (!subUser) {
-      throw new Error('Sub-user not found');
-    }
+    if (!subUser) throw new Error('Sub-user not found');
     if (String(subUser.parentUserId) !== String(parentUserId)) {
       throw new Error('This sub-user is not associated with the provided parent user');
     }
 
-    // Determine trainer: use the provided trainerId or fall back to the service default
+    // Resolve trainer
     let trainerId = providedTrainerId;
     if (!trainerId) {
       const service = await Service.findByPk(serviceId);
@@ -647,87 +1001,62 @@ exports.createSubUserBooking = async (req, res) => {
       }
       trainerId = service.defaultTrainerId;
     }
-    // Validate that the trainer exists
     const trainer = await Trainer.findByPk(trainerId);
-    if (!trainer) {
-      throw new Error('Trainer not found');
-    }
+    if (!trainer) throw new Error('Trainer not found');
 
-    let totalPrice = 0;
-    const createdBookingDates = [];
-
-    // Since this sub-user has already accepted the invitation,
-    // we mark the booking as approved immediately.
-    const isApproved = true;
-
-    // Create a new booking using the sub-user's ID (rather than the parent’s)
+    // Create booking (sub-user is the owner)
     const booking = await Booking.create(
       {
         userId: subUserId,
         serviceId,
         trainerId,
         address,
-        totalPrice: 0, // will update after calculating based on dates
-        status: 'active',
+        totalPrice: 0,
+        status: 'active',          // sub-user already accepted flow
         isBookingConfirmed: false,
-        approved: isApproved,
+        approved: true,            // for sub-user flow you marked as approved immediately
       },
       { transaction }
     );
 
-    // (Optional) Process participant data if provided
+    // 🔑 Expand mixed dates (exact/recurrence) into concrete rows
+    const expandedDates = expandBookingDates(dates);
+
+    // Add participants if provided
     const createdParticipants = [];
     if (participants && participants.length > 0) {
-      // Normalize category names if needed using your helper
-      const normalizedParticipants = participants.map((p) => ({
+      const normalized = participants.map((p) => ({
         ...p,
         category: normalizeCategory(p.category),
+        bookingId: booking.id,
       }));
-      for (const part of normalizedParticipants) {
-        const participantRecord = await Participant.create(
-          { ...part, bookingId: booking.id },
-          { transaction }
-        );
-        createdParticipants.push(participantRecord);
-      }
+      const rows = await Participant.bulkCreate(normalized, { transaction, returning: true });
+      createdParticipants.push(...rows);
     }
 
-    // Process each booking date
-    for (const dateObj of dates) {
-      const { date, startTime, endTime } = dateObj;
-      if (!date || !startTime || !endTime) {
-        throw new Error('Each date must include: { date, startTime, endTime }');
-      }
+    // Create BookingDates and compute total price
+    let totalPrice = 0;
+    const createdBookingDates = [];
+    for (const d of expandedDates) {
+      const { date, startTime, endTime } = d;
 
-      // Combine date and time for validation
       const startDateTime = new Date(`${date}T${startTime}`);
-      const endDateTime = new Date(`${date}T${endTime}`);
-
+      const endDateTime   = new Date(`${date}T${endTime}`);
       if (isNaN(startDateTime.getTime()) || isNaN(endDateTime.getTime())) {
         throw new Error('Invalid date or time format');
       }
-
       const hours = (endDateTime - startDateTime) / (1000 * 60 * 60);
-      if (hours <= 0) {
-        throw new Error('endTime must be after startTime');
-      }
+      if (hours <= 0) throw new Error('endTime must be after startTime');
 
       totalPrice += hours * trainer.hourlyRate;
 
-      // Create a BookingDate record
       const bookingDate = await BookingDate.create(
-        {
-          bookingId: booking.id,
-          date,
-          startTime,
-          endTime,
-        },
+        { bookingId: booking.id, date, startTime, endTime },
         { transaction }
       );
       createdBookingDates.push(bookingDate);
     }
 
-    // Update the booking with the calculated total price
     await booking.update({ totalPrice }, { transaction });
 
     await transaction.commit();
@@ -743,7 +1072,7 @@ exports.createSubUserBooking = async (req, res) => {
         totalPrice: booking.totalPrice,
         approved: booking.approved,
         dates: createdBookingDates,
-        participants: createdParticipants, // if any were added
+        participants: createdParticipants,
       },
     });
   } catch (error) {
@@ -754,6 +1083,7 @@ exports.createSubUserBooking = async (req, res) => {
     return res.status(500).json({ error: error.message });
   }
 };
+
 
 
 exports.getSubUserBookings = async (req, res) => {
@@ -1078,74 +1408,92 @@ exports.createGroupSessionBooking = async (req, res) => {
 
 exports.getUserBookingsWithPagination = async (req, res) => {
   try {
-    // Update past bookings before fetching
+    // keep statuses fresh
     await updatePastBookingsStatus();
 
     const { userId } = req.params;
-    const { page = 1, limit = 10 } = req.query; // Default pagination values
-
+    const page = parseInt(req.query.page ?? 1, 10);
+    const limit = parseInt(req.query.limit ?? 10, 10);
     const offset = (page - 1) * limit;
 
-    // Fetch bookings with pagination
-    const { count, rows: bookings } = await Booking.findAndCountAll({
+    const { count, rows } = await Booking.findAndCountAll({
       where: { userId },
-      limit: parseInt(limit, 10),
+      limit,
       offset,
-      order: [['createdAt', 'DESC']], // Show latest bookings first
+      order: [['createdAt', 'DESC']],
+      distinct: true,
       include: [
-        {
-          model: Participant,
-        },
+        { model: Participant },
         {
           model: BookingDate,
-          attributes: ['date', 'startTime', 'endTime', 'createdAt'],
+          attributes: [
+            'id',
+            'date',
+            'startTime',
+            'endTime',
+            'createdAt',
+            // recurrence/source meta
+            'sourceKind',
+            'sourceMode',
+            'sourceRangeStart',
+            'sourceRangeEnd',
+            'sourceWeekdays',
+            'sourceGroupId',
+          ],
         },
         {
           model: Service,
-          attributes: ['id', 'name', 'description', 'image', 'duration', 'hourlyRate', 'level'],
+          attributes: ['id','name','description','image','duration','hourlyRate','level'],
           include: [
             {
               model: ServiceDetails,
               attributes: [
-                'fullDescription',
-                'highlights',
-                'whatsIncluded',
-                'whatsNotIncluded',
-                'recommendations',
-                'coachInfo',
+                'fullDescription','highlights','whatsIncluded','whatsNotIncluded',
+                'recommendations','coachInfo',
               ],
             },
             {
               model: Trainer,
-              attributes: ['id', 'name', 'surname', 'avatar', 'hourlyRate', 'userRating'],
+              attributes: ['id','name','surname','avatar','hourlyRate','userRating'],
             },
             {
               model: SubCategory,
-              attributes: ['id', 'name'],
-              include: [
-                {
-                  model: Category,
-                  attributes: ['id', 'name'],
-                },
-              ],
+              attributes: ['id','name'],
+              include: [{ model: Category, attributes: ['id','name'] }],
             },
           ],
         },
       ],
     });
 
-    // Process bookings to include only the latest session
-    const filteredBookings = bookings.map((booking) => ({
-      ...booking.toJSON(),
-      latestBookingDate: booking.BookingDates.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))[0],
-    }));
+    // attach group session meta (if any)
+    const groupSessionIds = [...new Set(rows.map(b => b.groupSessionId).filter(Boolean))];
+    const groupSessions = groupSessionIds.length
+      ? await GroupSession.findAll({
+          where: { id: groupSessionIds },
+          attributes: ['id','maxGroupSize','currentEnrollment'],
+        })
+      : [];
+    const groupMap = groupSessions.reduce((acc, s) => (acc[s.id] = s, acc), {});
+
+    const bookings = rows.map((b) => {
+      const json = b.toJSON();
+      const createdDates = (json.BookingDates ?? []).map(d => ({ ...d }));
+      json.schedules = summarizeSchedules(createdDates);
+      json.latestBookingDate =
+        createdDates
+          .slice()
+          .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))[0] || null;
+      json.groupSessionData = json.groupSessionId ? groupMap[json.groupSessionId] || null : null;
+      return json;
+    });
 
     res.status(200).json({
       totalItems: count,
       totalBookingsOnCurrentPage: bookings.length,
-      totalPages: Math.ceil(count / parseInt(limit, 10)), // Fix calculation here
-      currentPage: parseInt(page, 10),
-      bookings: filteredBookings,
+      totalPages: Math.ceil(count / limit),
+      currentPage: page,
+      bookings,
     });
   } catch (error) {
     console.error('Error fetching paginated bookings:', error);
@@ -1157,10 +1505,13 @@ exports.getUserBookingsWithPagination = async (req, res) => {
 
 exports.getPaginatedFilteredBookingsOfUser = async (req, res) => {
   try {
+    // keep statuses fresh (optional but helpful)
+    await updatePastBookingsStatus();
+
     const { userId } = req.params;
+    const page = parseInt(req.query.page ?? 1, 10);
+    const limit = parseInt(req.query.limit ?? 10, 10);
     const {
-      page = 1,
-      limit = 10,
       status,
       startDate,
       endDate,
@@ -1168,144 +1519,140 @@ exports.getPaginatedFilteredBookingsOfUser = async (req, res) => {
     } = req.query;
 
     const offset = (page - 1) * limit;
+
+    // --- WHERE: base ---
     const whereClause = { userId };
 
-    // -- 1) STATUS
+    // --- WHERE: status filter with special rule ---
+    // If frontend asks for `status=active`, also include `pending_approval`.
     if (status) {
-      whereClause.status = status;
+      if (status === 'active') {
+        whereClause.status = { [Op.in]: ['active', 'pending_approval'] };
+      } else {
+        whereClause.status = status;
+      }
     }
 
-    // -- 2) DATES
-    const bookingDateWhereClause = {};
+    // --- WHERE: bookingDate window ---
+    const bookingDateWhere = {};
     if (startDate) {
-      bookingDateWhereClause.date = { [Op.gte]: startDate };
+      bookingDateWhere.date = { [Op.gte]: startDate };
     }
     if (endDate) {
-      bookingDateWhereClause.date = {
-        ...(bookingDateWhereClause.date || {}),
-        [Op.lte]: endDate,
-      };
+      bookingDateWhere.date = { ...(bookingDateWhere.date || {}), [Op.lte]: endDate };
     }
+    const requireDates = Object.keys(bookingDateWhere).length > 0;
 
-    // Build the subCategory include
+    // --- category/subcategory include ---
     const subCategoryInclude = {
       model: SubCategory,
-      attributes: ['id', 'name'],
-      include: [
-        {
-          model: Category,
-          attributes: ['id', 'name'],
-        },
-      ],
-      // If filtering by name
-      required: false, // or true if you want to strictly match
+      attributes: ['id','name'],
+      include: [{ model: Category, attributes: ['id','name'] }],
+      required: false,
     };
-
     if (categoryOrSubcategory) {
+      subCategoryInclude.required = true;
       subCategoryInclude.where = {
         [Op.or]: [
-          { name: categoryOrSubcategory },          // SubCategory.name
-          { '$Category.name$': categoryOrSubcategory }, // Category.name
-        ],
+          { name: categoryOrSubcategory },             // SubCategory.name
+          { '$Category.name$': categoryOrSubcategory } // Category.name
+        ]
       };
-      // If you only want Bookings that definitely match either subcategory or category:
-      subCategoryInclude.required = true;
     }
 
-    // Build the main service include
     const serviceInclude = {
       model: Service,
-      attributes: [
-        'id',
-        'name',
-        'description',
-        'image',
-        'duration',
-        'hourlyRate',
-        'level',
-      ],
-      // If you want the booking to definitely have a matching service if categoryOrSubcategory was provided:
-      required: !!categoryOrSubcategory, 
+      attributes: ['id','name','description','image','duration','hourlyRate','level'],
+      required: !!categoryOrSubcategory,
       include: [
         {
           model: ServiceDetails,
           attributes: [
-            'fullDescription',
-            'highlights',
-            'whatsIncluded',
-            'whatsNotIncluded',
-            'recommendations',
-            'coachInfo',
+            'fullDescription','highlights','whatsIncluded','whatsNotIncluded',
+            'recommendations','coachInfo',
           ],
         },
         {
           model: Trainer,
-          attributes: [
-            'id',
-            'name',
-            'surname',
-            'avatar',
-            'hourlyRate',
-            'userRating',
-          ],
+          attributes: ['id','name','surname','avatar','hourlyRate','userRating'],
         },
         subCategoryInclude,
       ],
     };
 
-    // Finally, run the query
     const { count, rows } = await Booking.findAndCountAll({
       where: whereClause,
-      limit: parseInt(limit, 10),
+      limit,
       offset,
       order: [['createdAt', 'DESC']],
-      distinct: true, // avoids duplicated row inflation in the count
+      distinct: true,
       include: [
-        {
-          model: Participant,
-        },
+        { model: Participant },
         {
           model: BookingDate,
-          where: Object.keys(bookingDateWhereClause).length
-            ? bookingDateWhereClause
-            : undefined,
-          // If you want only Bookings that definitely have a date in the given range:
-          required: Object.keys(bookingDateWhereClause).length > 0,
-          attributes: ['date', 'startTime', 'endTime', 'createdAt'],
+          where: requireDates ? bookingDateWhere : undefined,
+          required: requireDates,
+          attributes: [
+            'id',
+            'date',
+            'startTime',
+            'endTime',
+            'createdAt',
+            // recurrence/source meta
+            'sourceKind',
+            'sourceMode',
+            'sourceRangeStart',
+            'sourceRangeEnd',
+            'sourceWeekdays',
+            'sourceGroupId',
+          ],
         },
         serviceInclude,
       ],
     });
 
-        // Fetch group session data
-        const groupSessionIds = [...new Set(rows.map((b) => b.groupSessionId))];
-        const groupSessions = await GroupSession.findAll({
-          where: {
-            id: groupSessionIds,
-          },
-          attributes: ['id', 'maxGroupSize', 'currentEnrollment'],
-        });
-    
-        const groupSessionMap = groupSessions.reduce((acc, session) => {
-          acc[session.id] = session;
-          return acc;
-        }, {});
-    
-        // Map the results with group session data
-        const filteredBookings = rows.map((booking) => ({
-          ...booking.toJSON(),
-          groupSessionData: groupSessionMap[booking.groupSessionId] || null,
-          latestBookingDate: booking.BookingDates?.sort(
-            (a, b) => new Date(b.createdAt) - new Date(a.createdAt)
-          )[0],
-        }));
+    // group session meta
+    const groupSessionIds = [...new Set(rows.map(b => b.groupSessionId).filter(Boolean))];
+    const groupSessions = groupSessionIds.length
+      ? await GroupSession.findAll({
+          where: { id: groupSessionIds },
+          attributes: ['id','maxGroupSize','currentEnrollment'],
+        })
+      : [];
+    const groupMap = groupSessions.reduce((acc, s) => (acc[s.id] = s, acc), {});
+
+    const bookings = rows.map((b) => {
+      const json = b.toJSON();
+      const createdDates = (json.BookingDates ?? []).map(d => ({ ...d }));
+
+      // schedules and latest
+      json.schedules = summarizeSchedules(createdDates);
+      json.latestBookingDate =
+        createdDates
+          .slice()
+          .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))[0] || null;
+
+      // attach group session quick meta if present
+      json.groupSessionData = json.groupSessionId ? groupMap[json.groupSessionId] || null : null;
+
+      // ✅ UI status/message logic:
+      // If not approved OR status is pending_approval => show "pending approval"
+      // Otherwise show the actual status.
+      const isPending = (json.status === 'pending_approval') || (json.approved === false);
+      json.displayStatus = isPending ? 'pending approval' : json.status;
+
+      // Optional: a short UI flag if you prefer
+      json.isPendingApproval = isPending;
+
+      return json;
+    });
 
     res.json({
       totalItems: count,
-      totalBookingsOnCurrentPage: rows.length,
-      totalPages: Math.ceil(count / parseInt(limit, 10)),
-      currentPage: parseInt(page, 10),
-      bookings: filteredBookings,
+      totalBookingsOnCurrentPage: bookings.length,
+      totalPages: Math.ceil(count / limit),
+      currentPage: page,
+      bookings,
     });
   } catch (error) {
     console.error('Error fetching filtered bookings with pagination:', error);
@@ -1318,99 +1665,132 @@ exports.getAllBookingsOfUser = async (req, res) => {
   try {
     const { userId } = req.params;
 
-    // Fetch all bookings for the user without pagination
-    const bookings = await Booking.findAll({
+    const rows = await Booking.findAll({
       where: { userId },
+      order: [['createdAt', 'DESC']],
       include: [
         { model: Participant },
         {
           model: BookingDate,
-          attributes: ['date', 'startTime', 'endTime', 'createdAt'],
+          attributes: [
+            'id',
+            'date',
+            'startTime',
+            'endTime',
+            'createdAt',
+            // recurrence/source meta
+            'sourceKind',
+            'sourceMode',
+            'sourceRangeStart',
+            'sourceRangeEnd',
+            'sourceWeekdays',
+            'sourceGroupId',
+          ],
         },
         {
           model: Service,
-          attributes: ['id', 'name', 'description', 'image', 'duration', 'hourlyRate', 'level'],
+          attributes: ['id','name','description','image','duration','hourlyRate','level'],
           include: [
             {
               model: ServiceDetails,
-              attributes: ['fullDescription', 'highlights', 'whatsIncluded', 'whatsNotIncluded', 'recommendations', 'coachInfo'],
+              attributes: [
+                'fullDescription','highlights','whatsIncluded','whatsNotIncluded',
+                'recommendations','coachInfo',
+              ],
             },
             {
               model: Trainer,
               through: { attributes: [] },
-              attributes: ['id', 'name', 'surname', 'avatar', 'hourlyRate', 'userRating'],
+              attributes: ['id','name','surname','avatar','hourlyRate','userRating'],
             },
             {
               model: SubCategory,
-              attributes: ['id', 'name'],
-              include: [{ model: Category, attributes: ['id', 'name'] }],
+              attributes: ['id','name'],
+              include: [{ model: Category, attributes: ['id','name'] }],
             },
           ],
         },
       ],
     });
 
-    // Process each booking to include group session data if `groupSessionId` exists
-    const updatedBookings = await Promise.all(
-      bookings.map(async (booking) => {
-        const bookingData = booking.toJSON();
+    // hydrate group session
+    const groupSessionIds = [...new Set(rows.map(b => b.groupSessionId).filter(Boolean))];
+    const sessionMap = {};
+    if (groupSessionIds.length) {
+      const sessions = await GroupSession.findAll({
+        where: { id: groupSessionIds },
+        attributes: ['id','date','startTime','endTime','maxGroupSize','currentEnrollment','status'],
+        include: [
+          { model: Trainer, attributes: ['id','name','surname'] },
+          { model: Service, attributes: ['id','name','description','image'] },
+        ],
+      });
+      sessions.forEach(s => { sessionMap[s.id] = s; });
+    }
 
-        if (booking.groupSessionId) {
-          const groupSession = await GroupSession.findByPk(booking.groupSessionId, {
-            attributes: ['id', 'date', 'startTime', 'endTime', 'maxGroupSize', 'currentEnrollment', 'status'],
-            include: [
-              { model: Trainer, attributes: ['id', 'name', 'surname'] },
-              { model: Service, attributes: ['id', 'name', 'description', 'image'] },
-            ],
-          });
+    const bookings = rows.map((b) => {
+      const json = b.toJSON();
+      const createdDates = (json.BookingDates ?? []).map(d => ({ ...d }));
+      json.schedules = summarizeSchedules(createdDates);
+      json.latestBookingDate =
+        createdDates
+          .slice()
+          .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))[0] || null;
+      json.groupSession = json.groupSessionId ? (sessionMap[json.groupSessionId] || null) : null;
+      return json;
+    });
 
-          bookingData.groupSession = groupSession || null;
-        }
-
-        return bookingData;
-      })
-    );
-
-    res.status(200).json(updatedBookings);
+    res.status(200).json(bookings);
   } catch (error) {
     console.error('Error fetching bookings:', error);
     res.status(500).json({ error: error.message });
   }
 };
 
-
-
-
-
-
 exports.getBookingById = async (req, res) => {
   try {
     const { id } = req.params;
 
-    // Fetch booking by ID
     const booking = await Booking.findOne({
       where: { id },
       include: [
         {
           model: Participant,
-          attributes: ['id', 'name', 'surname', 'age', 'category'],
+          attributes: ['id','name','surname','age','category'],
         },
         {
           model: BookingDate,
-          attributes: ['id', 'date', 'startTime', 'endTime'],
+          attributes: [
+            'id',
+            'date',
+            'startTime',
+            'endTime',
+            'createdAt',
+            // recurrence/source meta
+            'sourceKind',
+            'sourceMode',
+            'sourceRangeStart',
+            'sourceRangeEnd',
+            'sourceWeekdays',
+            'sourceGroupId',
+          ],
+          order: [['date','ASC'], ['startTime','ASC']],
         },
         {
           model: Service,
-          attributes: ['id', 'name', 'description', 'image', 'duration', 'hourlyRate', 'level'],
+          attributes: ['id','name','description','image','duration','hourlyRate','level'],
           include: [
             {
               model: ServiceDetails,
-              attributes: ['fullDescription', 'highlights', 'whatsIncluded', 'whatsNotIncluded', 'recommendations', 'coachInfo'],
+              attributes: [
+                'fullDescription','highlights','whatsIncluded','whatsNotIncluded',
+                'recommendations','coachInfo',
+              ],
             },
             {
               model: Trainer,
               through: { attributes: [] },
-              attributes: ['id', 'name', 'surname', 'avatar', 'hourlyRate', 'userRating'],
+              attributes: ['id','name','surname','avatar','hourlyRate','userRating'],
             },
           ],
         },
@@ -1421,217 +1801,182 @@ exports.getBookingById = async (req, res) => {
       return res.status(404).json({ message: 'Booking not found' });
     }
 
-    // If groupSessionId exists, fetch additional group session data
+    const json = booking.toJSON();
+    const createdDates = (json.BookingDates ?? []).map(d => ({ ...d }));
+    json.schedules = summarizeSchedules(createdDates);
+
+    // group session (optional)
     if (booking.groupSessionId) {
-      const groupSession = await GroupSession.findByPk(booking.groupSessionId, {
-        attributes: ['id', 'date', 'startTime', 'endTime', 'maxGroupSize', 'currentEnrollment', 'status'],
+      const gs = await GroupSession.findByPk(booking.groupSessionId, {
+        attributes: ['id','date','startTime','endTime','maxGroupSize','currentEnrollment','status'],
         include: [
-          { model: Trainer, attributes: ['id', 'name', 'surname'] },
-          { model: Service, attributes: ['id', 'name', 'description', 'image'] },
+          { model: Trainer, attributes: ['id','name','surname'] },
+          { model: Service, attributes: ['id','name','description','image'] },
         ],
       });
-
-      booking.dataValues.groupSession = groupSession || null;
+      json.groupSession = gs || null;
     }
 
-    res.status(200).json(booking);
+    res.status(200).json(json);
   } catch (error) {
     console.error('Error fetching booking:', error);
     res.status(500).json({ error: 'An error occurred while fetching the booking.' });
   }
 };
 
-
-
 exports.getBookingsByIds = async (req, res) => {
   try {
-    const { ids } = req.query; // Booking IDs passed as a comma-separated string
-    const { userId } = req.query; // User ID from query parameters
+    const { ids, userId } = req.query;
 
-    if (!ids) {
-      return res.status(400).json({ message: 'Booking IDs are required' });
-    }
-    if (!userId) {
-      return res.status(400).json({ message: 'User ID is required' });
-    }
+    if (!ids) return res.status(400).json({ message: 'Booking IDs are required' });
+    if (!userId) return res.status(400).json({ message: 'User ID is required' });
 
-    // Split the string into an array of numbers
-    const bookingIds = ids.split(',').map(Number);
+    const bookingIds = ids.split(',').map(Number).filter(Boolean);
 
-    // Find all bookings matching the provided IDs and userId
-    const bookings = await Booking.findAll({
-      where: {
-        id: bookingIds, // Match booking IDs
-        userId, // Filter by user ID
-      },
+    const rows = await Booking.findAll({
+      where: { id: bookingIds, userId },
+      order: [['createdAt', 'DESC']],
       include: [
-        {
-          model: Participant,
-          required: false, // Include participants if available
-        },
+        { model: Participant, required: false },
         {
           model: BookingDate,
-          attributes: ['date', 'startTime', 'endTime'], // Include date, startTime, endTime
+          attributes: [
+            'id',
+            'date',
+            'startTime',
+            'endTime',
+            'createdAt',
+            // recurrence/source meta
+            'sourceKind',
+            'sourceMode',
+            'sourceRangeStart',
+            'sourceRangeEnd',
+            'sourceWeekdays',
+            'sourceGroupId',
+          ],
         },
         {
           model: Service,
-          attributes: ['id', 'name', 'description', 'image', 'duration', 'hourlyRate', 'level'],
+          attributes: ['id','name','description','image','duration','hourlyRate','level'],
           include: [
             {
               model: ServiceDetails,
               attributes: [
-                'fullDescription',
-                'highlights',
-                'whatsIncluded',
-                'whatsNotIncluded',
-                'recommendations',
-                'whatsToBring',
-                'coachInfo',
+                'fullDescription','highlights','whatsIncluded','whatsNotIncluded',
+                'recommendations','whatsToBring','coachInfo',
               ],
             },
             {
               model: Trainer,
-              through: { attributes: [] }, // Include Trainer through the ServiceTrainer join table
-              attributes: ['id', 'name', 'surname', 'avatar', 'hourlyRate', 'userRating'], // Only fetch necessary fields
+              through: { attributes: [] },
+              attributes: ['id','name','surname','avatar','hourlyRate','userRating'],
             },
           ],
         },
       ],
     });
 
-    if (!bookings || bookings.length === 0) {
+    if (!rows || rows.length === 0) {
       return res.status(404).json({ message: 'No bookings found' });
     }
 
-    // Map over bookings to prepare the response
-    const response = bookings.map((booking) => {
-      const validParticipants = booking.Participants && booking.Participants.length > 0
-        ? booking.Participants
-        : null;
+    const bookings = rows.map((b) => {
+      const json = b.toJSON();
 
-      // Sort BookingDates by `date` and `endTime` to get the latest booking
-      const validDates = booking.BookingDates.sort((a, b) => {
-        const dateA = new Date(`${a.date}T${a.endTime}`);
-        const dateB = new Date(`${b.date}T${b.endTime}`);
-        return dateB - dateA; // Sort descending (latest first)
-      }).slice(0, 1); // Take the most recent date
+      // compute schedules
+      const createdDates = (json.BookingDates ?? []).map(d => ({ ...d }));
+      json.schedules = summarizeSchedules(createdDates);
 
-      const selectedTrainer = booking.Service?.Trainers?.[0] || null;
+      // keep the single "latest" date if you still want that shape
+      json.BookingDates = createdDates
+        .slice()
+        .sort((a, b) => new Date(`${b.date}T${b.endTime}`) - new Date(`${a.date}T${a.endTime}`))
+        .slice(0, 1);
 
-      return {
-        ...booking.toJSON(),
-        BookingDates: validDates, // Return the most recent valid date
-        Participants: validParticipants, // Return participants only if they exist
-        Trainer: selectedTrainer, // Return the trainer associated with the service
-      };
+      // expose a convenient selected trainer (first service trainer) if you relied on that
+      json.Trainer = json.Service?.Trainers?.[0] || null;
+
+      return json;
     });
 
-    // Send the response
-    res.status(200).json(response);
+    res.status(200).json(bookings);
   } catch (error) {
     console.error('Error fetching bookings by IDs:', error.message);
     res.status(500).json({ error: error.message });
   }
 };
 
-
-
+// ✅ FULL REPLACEMENT
 exports.editBooking = async (req, res) => {
   try {
     const { id } = req.params;
-    const { address, participants, dates } = req.body;
+    const { address, participants = [], dates = [] } = req.body;
 
-    // Find the booking by ID
+    // Find the booking
     const booking = await Booking.findByPk(id);
     if (!booking) {
       return res.status(404).json({ message: 'Booking not found' });
     }
 
-    // Update the address if provided
+    // Update address if provided
     booking.address = address || booking.address;
 
-    // Normalize and update participants
-    const normalizedParticipants = participants.map(participant => ({
-      ...participant,
-      category: normalizeCategory(participant.category)
-    }));
-
-    // Clear existing participants and update with new ones
-    await Participant.destroy({ where: { bookingId: id } }); // Clear existing participants
-    if (normalizedParticipants.length > 0) {
-      const participantData = normalizedParticipants.map(participant => ({
-        ...participant,
-        bookingId: id
+    // Normalize + replace participants
+    await Participant.destroy({ where: { bookingId: id } });
+    if (Array.isArray(participants) && participants.length > 0) {
+      const normalizedParticipants = participants.map((p) => ({
+        ...p,
+        category: normalizeCategory(p.category),
+        bookingId: id,
       }));
-      await Participant.bulkCreate(participantData);
+      await Participant.bulkCreate(normalizedParticipants);
     }
 
-    // Initialize total price to 0
-    let totalPrice = 0;
-
-    // Fetch the trainer to get the hourly rate
+    // Get trainer for pricing
     const trainer = await Trainer.findByPk(booking.trainerId);
     if (!trainer) {
       return res.status(404).json({ message: 'Trainer not found' });
     }
 
-    // Clear existing dates and update with new dates, calculate total price
-    await BookingDate.destroy({ where: { bookingId: id } }); // Clear existing dates
+    // Replace dates and recompute totalPrice
+    await BookingDate.destroy({ where: { bookingId: id } });
 
-    if (dates && dates.length > 0) {
-      const dateData = dates.map(date => {
-        // Validate and ensure that date, startTime, and endTime are present
-        if (!date || !date.date || !date.startTime || !date.endTime) {
-          throw new Error('Invalid date, start time, or end time');
-        }
+    let totalPrice = 0;
 
-        const { date: datePart, startTime, endTime } = date;
+    if (Array.isArray(dates) && dates.length > 0) {
+      // 🔑 Expand mixed dates (exact/recurrence) into concrete rows
+      const expandedDates = expandBookingDates(dates);
 
-        // Combine date and time
-        const startDateTime = new Date(`${datePart}T${startTime}`);
-        const endDateTime = new Date(`${datePart}T${endTime}`);
-
-        // Ensure the date format is valid
+      const dateRows = expandedDates.map(({ date, startTime, endTime }) => {
+        const startDateTime = new Date(`${date}T${startTime}`);
+        const endDateTime   = new Date(`${date}T${endTime}`);
         if (isNaN(startDateTime.getTime()) || isNaN(endDateTime.getTime())) {
           throw new Error('Invalid date format for start time or end time');
         }
-
-        // Calculate the duration in hours
-        const hours = (endDateTime - startDateTime) / (1000 * 60 * 60); // Convert milliseconds to hours
-
-        // Ensure the number of hours is a positive value
+        const hours = (endDateTime - startDateTime) / (1000 * 60 * 60);
         if (hours <= 0) {
           throw new Error('End time must be greater than start time');
         }
 
-        // Accumulate the total price
         totalPrice += hours * trainer.hourlyRate;
-
-        return {
-          date: datePart,
-          startTime,
-          endTime,
-          bookingId: id
-        };
+        return { date, startTime, endTime, bookingId: id };
       });
 
-      // If valid date data exists, bulk create BookingDates
-      if (dateData.length > 0) {
-        await BookingDate.bulkCreate(dateData);
+      if (dateRows.length > 0) {
+        await BookingDate.bulkCreate(dateRows);
       }
     }
 
-    // Update the total price and save the booking
     booking.totalPrice = totalPrice;
     await booking.save();
 
-    // Respond with the updated booking
-    res.status(200).json(booking);
+    return res.status(200).json(booking);
   } catch (error) {
-    // Catch any errors and respond with 500
-    res.status(500).json({ error: error.message });
+    console.error('Error editing booking:', error);
+    return res.status(500).json({ error: error.message });
   }
 };
+
 
 exports.extendSession = async (req, res) => {
   try {
@@ -2132,14 +2477,12 @@ exports.rateBooking = async (req, res) => {
   }
 };
 
-// GET /bookings/trainer/:trainerId/all
 exports.getTrainerBookingsCategorized = async (req, res) => {
   try {
     const { trainerId } = req.params;
     const now = new Date();
 
-    // 1) fetch all bookings for this trainer with the same includes as user endpoint
-    const bookings = await Booking.findAll({
+    const rows = await Booking.findAll({
       where: { trainerId },
       order: [['createdAt', 'DESC']],
       distinct: true,
@@ -2147,7 +2490,19 @@ exports.getTrainerBookingsCategorized = async (req, res) => {
         { model: Participant },
         {
           model: BookingDate,
-          attributes: ['date', 'startTime', 'endTime', 'createdAt']
+          attributes: [
+            'id',
+            'date',
+            'startTime',
+            'endTime',
+            'createdAt',
+            'sourceKind',
+            'sourceMode',
+            'sourceRangeStart',
+            'sourceRangeEnd',
+            'sourceWeekdays',
+            'sourceGroupId',
+          ],
         },
         {
           model: Service,
@@ -2156,12 +2511,8 @@ exports.getTrainerBookingsCategorized = async (req, res) => {
             {
               model: ServiceDetails,
               attributes: [
-                'fullDescription',
-                'highlights',
-                'whatsIncluded',
-                'whatsNotIncluded',
-                'recommendations',
-                'coachInfo'
+                'fullDescription','highlights','whatsIncluded','whatsNotIncluded',
+                'recommendations','coachInfo',
               ],
             },
             {
@@ -2171,49 +2522,47 @@ exports.getTrainerBookingsCategorized = async (req, res) => {
             {
               model: SubCategory,
               attributes: ['id','name'],
-              include: [
-                { model: Category, attributes: ['id','name'] }
-              ],
-            }
+              include: [{ model: Category, attributes: ['id','name'] }],
+            },
           ],
         },
       ],
     });
 
-    // 2) fetch group-session metadata in one go
-    const groupSessionIds = bookings
-      .map(b => b.groupSessionId)
-      .filter(id => id != null);
-    const groupSessions = await GroupSession.findAll({
-      where: { id: groupSessionIds },
-      attributes: ['id','maxGroupSize','currentEnrollment']
-    });
-    const sessionMap = groupSessions.reduce((acc, s) => {
-      acc[s.id] = s;
-      return acc;
-    }, {});
+    const groupSessionIds = rows.map(b => b.groupSessionId).filter(id => id != null);
+    const groupSessions = groupSessionIds.length
+      ? await GroupSession.findAll({
+          where: { id: groupSessionIds },
+          attributes: ['id','maxGroupSize','currentEnrollment'],
+        })
+      : [];
+    const sessionMap = groupSessions.reduce((acc, s) => (acc[s.id] = s, acc), {});
 
-    // 3) attach groupSessionData & latestBookingDate
-    const enriched = bookings.map(b => {
+    const enriched = rows.map(b => {
       const json = b.toJSON();
-      json.groupSessionData = sessionMap[b.groupSessionId] || null;
-      json.latestBookingDate = json.BookingDates
-        .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))[0];
+      const createdDates = (json.BookingDates ?? []).map(d => ({ ...d }));
+      json.schedules = summarizeSchedules(createdDates);
+      json.groupSessionData = json.groupSessionId ? (sessionMap[json.groupSessionId] || null) : null;
+      json.latestBookingDate =
+        createdDates
+          .slice()
+          .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))[0] || null;
       return json;
     });
 
-    // 4) bucket into upcoming / past / canceled
     const categorized = { upcoming: [], past: [], canceled: [] };
-    for (const booking of enriched) {
-      if (booking.status === 'canceled') {
-        categorized.canceled.push(booking);
-      } else {
-        const endTs = new Date(
-          `${booking.latestBookingDate.date}T${booking.latestBookingDate.endTime}`
-        );
-        if (endTs > now) categorized.upcoming.push(booking);
-        else categorized.past.push(booking);
+    for (const b of enriched) {
+      if (b.status === 'canceled') {
+        categorized.canceled.push(b);
+        continue;
       }
+      if (!b.latestBookingDate) {
+        categorized.past.push(b);
+        continue;
+      }
+      const endTs = new Date(`${b.latestBookingDate.date}T${b.latestBookingDate.endTime}`);
+      if (endTs > now) categorized.upcoming.push(b);
+      else categorized.past.push(b);
     }
 
     return res.status(200).json(categorized);

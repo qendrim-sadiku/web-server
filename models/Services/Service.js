@@ -47,6 +47,11 @@ const Service = sequelize.define('Service', {
     type: DataTypes.FLOAT,
     allowNull: false
   },
+  liveSession: {
+  type: DataTypes.BOOLEAN,
+  allowNull: false,
+  defaultValue: false,
+},
   defaultTrainerId: {
     type: DataTypes.INTEGER,
     references: {
