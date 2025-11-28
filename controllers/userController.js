@@ -21,6 +21,7 @@ const PaymentInfo = require('../models/UserProfile/PaymentInfo');
 const UserPreferences = require('../models/UserProfile/UserPreferences');
 const BrowsingHistory = require('../models/BrowsingHistory');
 const {Service} = require('../models/Services/Service');
+const RecentSearch = require('../models/RecentSearch ');
 
 // Configure multer for file upload
 const storage = multer.diskStorage({
@@ -2102,6 +2103,93 @@ exports.getUserDescription = async (req, res) => {
   } catch (error) {
     console.error('Error fetching user description:', error);
     res.status(500).send({ message: 'Error fetching user description', error });
+  }
+};
+
+// Save a ZIP code to user's recent list (keep last 3 unique)
+exports.addUserZipCode = async (req, res) => {
+  const { userId } = req.params;
+  const { zipCode } = req.body;
+
+  try {
+    if (!userId || !zipCode) {
+      return res.status(400).json({ message: 'userId and zipCode are required' });
+    }
+
+    const normalized = `ZIP:${zipCode}`;
+
+    const existing = await RecentSearch.findAll({
+      where: { userId },
+      order: [['createdAt', 'DESC']],
+    });
+
+    const zipEntries = existing.filter(r => typeof r.query === 'string' && r.query.startsWith('ZIP:'));
+
+    const duplicate = zipEntries.find(r => r.query === normalized);
+    if (duplicate) {
+      await duplicate.destroy();
+    }
+
+    const toDelete = zipEntries.slice(2); // keep two; we'll add one new -> total 3
+    for (const del of toDelete) {
+      await del.destroy();
+    }
+
+    const created = await RecentSearch.create({ userId, query: normalized });
+
+    return res.status(201).json({ message: 'ZIP saved', id: created.id });
+  } catch (error) {
+    console.error('addUserZipCode error:', error);
+    return res.status(500).json({ message: 'Failed to save zip code' });
+  }
+};
+
+// Get last ZIP codes for user (max 3)
+exports.getUserZipCodes = async (req, res) => {
+  const { userId } = req.params;
+  const limit = parseInt(req.query.limit || '3', 10);
+
+  try {
+    if (!userId) {
+      return res.status(400).json({ message: 'userId is required' });
+    }
+
+    const recents = await RecentSearch.findAll({
+      where: { userId },
+      order: [['createdAt', 'DESC']],
+    });
+
+    const zips = recents
+      .map(r => (typeof r.query === 'string' ? r.query : ''))
+      .filter(q => q.startsWith('ZIP:'))
+      .map(q => q.replace('ZIP:', ''))
+      .filter((zip, idx, arr) => arr.indexOf(zip) === idx)
+      .slice(0, limit);
+
+    return res.status(200).json({ userId, zips });
+  } catch (error) {
+    console.error('getUserZipCodes error:', error);
+    return res.status(500).json({ message: 'Failed to get zip codes' });
+  }
+};
+
+// Clear all saved ZIP codes for user
+exports.clearUserZipCodes = async (req, res) => {
+  const { userId } = req.params;
+  try {
+    if (!userId) {
+      return res.status(400).json({ message: 'userId is required' });
+    }
+
+    const recents = await RecentSearch.findAll({ where: { userId } });
+    const toDelete = recents.filter(r => typeof r.query === 'string' && r.query.startsWith('ZIP:'));
+    for (const row of toDelete) {
+      await row.destroy();
+    }
+    return res.status(200).json({ message: 'ZIP history cleared' });
+  } catch (error) {
+    console.error('clearUserZipCodes error:', error);
+    return res.status(500).json({ message: 'Failed to clear zip codes' });
   }
 };
 

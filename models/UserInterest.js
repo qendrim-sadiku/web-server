@@ -28,7 +28,7 @@ const UserInterest = sequelize.define('UserInterest', {
     allowNull: true, // Optional field
   },
 }, {
-  timestamps: false,
+  timestamps: true,
 });
 
 User.belongsToMany(Service, { through: UserInterest, as: 'interests', foreignKey: 'userId' });

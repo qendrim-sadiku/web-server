@@ -198,3 +198,67 @@ exports.getCustomCities = async (req, res) => {
     res.status(500).send('Error fetching cities');
   }
 };
+
+// Reverse geocode: Get address and zip code from coordinates
+exports.getAddressFromCoordinates = async (req, res) => {
+  try {
+    const { lat, lng, latitude, longitude } = req.query;
+    
+    // Support both 'lat/lng' and 'latitude/longitude' parameter names
+    const latitudeValue = lat || latitude;
+    const longitudeValue = lng || longitude;
+    
+    if (!latitudeValue || !longitudeValue) {
+      return res.status(400).json({ 
+        error: 'Coordinates are required',
+        message: 'Please provide both latitude (lat) and longitude (lng) or latitude and longitude'
+      });
+    }
+
+    const latNum = parseFloat(latitudeValue);
+    const lngNum = parseFloat(longitudeValue);
+    
+    if (isNaN(latNum) || isNaN(lngNum)) {
+      return res.status(400).json({ 
+        error: 'Invalid coordinates',
+        message: 'Latitude and longitude must be valid numbers'
+      });
+    }
+
+    if (latNum < -90 || latNum > 90) {
+      return res.status(400).json({ 
+        error: 'Invalid latitude',
+        message: 'Latitude must be between -90 and 90'
+      });
+    }
+
+    if (lngNum < -180 || lngNum > 180) {
+      return res.status(400).json({ 
+        error: 'Invalid longitude',
+        message: 'Longitude must be between -180 and 180'
+      });
+    }
+
+    const { reverseGeocode } = require('../services/locationService');
+    const addressInfo = await reverseGeocode(latNum, lngNum);
+    
+    if (!addressInfo) {
+      return res.status(404).json({ 
+        error: 'Address not found',
+        message: 'Could not find an address for the provided coordinates'
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      address: addressInfo,
+      zipCode: addressInfo.zipCode
+    });
+  } catch (error) {
+    console.error('Error getting address from coordinates:', error);
+    res.status(500).json({ 
+      error: 'Internal server error',
+      message: error.message 
+    });
+  }
+};
