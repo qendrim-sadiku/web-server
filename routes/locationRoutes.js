@@ -2,23 +2,21 @@ const express = require('express');
 const router = express.Router();
 const locationController = require('../controllers/locationController');
 
-// Route to get all countries
+// IMPORTANT: Exact match routes must come BEFORE parameterized routes
+// Route to reverse geocode coordinates to address
+router.get('/reverse-geocode', locationController.getAddressFromCoordinates);
+
+// Exact match routes
+router.get('/entries', locationController.getEntries);
+router.get('/all-countries', locationController.getAllCountries);
 router.get('/countries', locationController.getCountries);
 
-// Route to get cities by country code
+// Routes with one parameter
 router.get('/cities/:countryCode', locationController.getCities);
 
-// Route to get cities by country code
-router.get('/entries', locationController.getEntries);
-
-// Fetch all countries
-router.get('/all-countries', locationController.getAllCountries);
-
-// Fetch states by country code
-router.get('/:countryCode/states', locationController.getStatesByCountry);
-
-// Fetch cities by country code and optionally state code
+// Routes with multiple parameters (must come last)
 router.get('/:countryCode/states/:stateCode/cities', locationController.getCustomCities);
+router.get('/:countryCode/states', locationController.getStatesByCountry);
 router.get('/:countryCode/cities', locationController.getCities); // Without state
 
 module.exports = router;

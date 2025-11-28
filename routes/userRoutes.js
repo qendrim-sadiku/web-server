@@ -62,6 +62,11 @@ router.get('/user/:userId/details',  userController.getUserDetails);
 router.get('/user/:userId/payment-info',  userController.getUserPaymentInfo);
 router.put('/user/set-default-payment', userController.setDefaultPaymentMethod);
 
+// Recent ZIP codes per user
+router.post('/user/:userId/zipcodes', userController.addUserZipCode);
+router.get('/user/:userId/zipcodes', userController.getUserZipCodes);
+router.delete('/user/:userId/zipcodes', userController.clearUserZipCodes);
+
 // Handle user avatar (authenticated users only)
 router.get('/user/:userId/avatar',  userController.getUserAvatar);
 router.put('/user/:userId/avatar',  userController.updateUserAvatar);

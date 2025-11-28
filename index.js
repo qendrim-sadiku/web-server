@@ -101,6 +101,9 @@ app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocs));
 // Routes
 app.use('/', authRoutes);
 app.use('/api', userRoutes);
+// Direct route for reverse-geocode (registered before router to ensure it works)
+const locationController = require('./controllers/locationController');
+app.get('/countries/reverse-geocode', locationController.getAddressFromCoordinates);
 app.use('/countries', locationRoutes);
 app.use('/api/services', serviceRoutes);
 app.use('/api', bookingRoutes);

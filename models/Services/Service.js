@@ -4,6 +4,7 @@ const Trainer = require('../Trainer/Trainer');
 const SubCategory = require('../Category/SubCategory');
 const ServiceDetails = require('./ServiceDetails'); // Import ServiceDetails model
 const ServiceType = require('./ServiceType'); // Add this line
+const ServiceAddress = require('./ServiceAddress'); // Import ServiceAddress model
 
 const Service = sequelize.define('Service', {
   id: {
@@ -71,7 +72,27 @@ const Service = sequelize.define('Service', {
       key: 'id'
     },
     allowNull: false
-  } 
+  },
+  tags: {
+    type: DataTypes.TEXT,
+    allowNull: true,
+    get() {
+      const value = this.getDataValue('tags');
+      if (!value) return null;
+      try {
+        return JSON.parse(value);
+      } catch (e) {
+        return null;
+      }
+    },
+    set(value) {
+      if (value === null || value === undefined) {
+        this.setDataValue('tags', null);
+      } else {
+        this.setDataValue('tags', JSON.stringify(value));
+      }
+    }
+  }
 }, {
   timestamps: true   
 });
@@ -110,5 +131,9 @@ Service.belongsTo(Trainer, { as: 'defaultTrainer', foreignKey: 'defaultTrainerId
 
 SubCategory.hasMany(Service, { foreignKey: 'subCategoryId' });
 Service.belongsTo(SubCategory, { foreignKey: 'subCategoryId' });
+
+// ServiceAddress associations
+Service.hasOne(ServiceAddress, { foreignKey: 'serviceId', onDelete: 'CASCADE' });
+ServiceAddress.belongsTo(Service, { foreignKey: 'serviceId' });
 
 module.exports = { Service, ServiceTrainer };
